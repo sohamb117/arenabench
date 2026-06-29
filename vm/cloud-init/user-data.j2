@@ -1,0 +1,64 @@
+#cloud-config
+
+users:
+{%- for agent in agents %}
+  - name: {{ agent.user }}
+    shell: /bin/bash
+    groups: [users]
+    lock_passwd: true
+    sudo: false
+{%- endfor %}
+
+write_files:
+{%- for agent in agents %}
+  - path: /home/{{ agent.user }}/config.json
+    owner: '{{ agent.user }}:{{ agent.user }}'
+    permissions: '0600'
+    defer: true
+    content: |
+{{ agent.config_blob | indent(6, first=True) }}
+  - path: /home/{{ agent.user }}/system_prompt.txt
+    owner: '{{ agent.user }}:{{ agent.user }}'
+    permissions: '0600'
+    defer: true
+    content: |
+{{ agent.prompt_blob | indent(6, first=True) }}
+  - path: /home/{{ agent.user }}/.config/systemd/user/arenabench-harness.service
+    owner: '{{ agent.user }}:{{ agent.user }}'
+    permissions: '0644'
+    defer: true
+    content: |
+      [Unit]
+      Description=arenabench harness for {{ agent.user }}
+      After=default.target
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/python3 -m harness /home/{{ agent.user }}/config.json
+      Restart=no
+
+      [Install]
+      WantedBy=default.target
+{%- if agent.cgroup_limits %}
+  - path: /home/{{ agent.user }}/.config/systemd/user/arenabench-harness.service.d/limits.conf
+    owner: '{{ agent.user }}:{{ agent.user }}'
+    permissions: '0644'
+    defer: true
+    content: |
+      [Service]
+      CPUQuota={{ agent.cgroup_limits.cpu_quota_ms_per_s }}ms/s
+      MemoryMax={{ agent.cgroup_limits.mem_mb }}M
+{%- endif %}
+{%- endfor %}
+
+runcmd:
+{%- for agent in agents %}
+  - loginctl enable-linger {{ agent.user }}
+{%- endfor %}
+{%- if network_policy == "full" %}
+  - iptables -F
+  - iptables -X
+  - iptables -P INPUT ACCEPT
+  - iptables -P FORWARD ACCEPT
+  - iptables -P OUTPUT ACCEPT
+{%- endif %}
