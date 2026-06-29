@@ -8,7 +8,7 @@ users:
     lock_passwd: false
     ssh_authorized_keys:
       - "{{ ssh_pubkey }}"
-{%- for agent in agents %}
+{% for agent in agents %}
   - name: {{ agent.user }}
     shell: /bin/bash
     groups: [users]
@@ -16,10 +16,9 @@ users:
     sudo: false
     ssh_authorized_keys:
       - "{{ ssh_pubkey }}"
-{%- endfor %}
-
+{% endfor %}
 write_files:
-{%- for agent in agents %}
+{% for agent in agents %}
   - path: /home/{{ agent.user }}/config.json
     owner: '{{ agent.user }}:{{ agent.user }}'
     permissions: '0600'
@@ -48,7 +47,7 @@ write_files:
 
       [Install]
       WantedBy=default.target
-{%- if agent.cgroup_limits %}
+{% if agent.cgroup_limits %}
   - path: /home/{{ agent.user }}/.config/systemd/user/arenabench-harness.service.d/limits.conf
     owner: '{{ agent.user }}:{{ agent.user }}'
     permissions: '0644'
@@ -57,17 +56,16 @@ write_files:
       [Service]
       CPUQuota={{ agent.cgroup_limits.cpu_quota_ms_per_s }}ms/s
       MemoryMax={{ agent.cgroup_limits.mem_mb }}M
-{%- endif %}
-{%- endfor %}
-
+{% endif %}
+{% endfor %}
 runcmd:
-{%- for agent in agents %}
+{% for agent in agents %}
   - loginctl enable-linger {{ agent.user }}
-{%- endfor %}
-{%- if network_policy == "full" %}
+{% endfor %}
+{% if network_policy == "full" %}
   - iptables -F
   - iptables -X
   - iptables -P INPUT ACCEPT
   - iptables -P FORWARD ACCEPT
   - iptables -P OUTPUT ACCEPT
-{%- endif %}
+{% endif %}
