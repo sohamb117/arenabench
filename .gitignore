@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type / lint caches
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pyright/
+
+# VM artifacts (large, regenerable, host-specific)
+vm/images/
+vm/cache/
+*.qcow2
+*.qcow2.tmp
+*.img
+*.iso
+*.vmdk
+vm/seed-*.iso
+
+# Match logs and runtime state
+logs/matches/
+logs/*.log
+logs/*.jsonl
+*.pid
+*.sock
+*.lock
+
+# Secrets
+.env
+.env.*
+!.env.example
+configs/secrets/
+*.key
+*.pem
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OpenCode / agent scratch
+.omo/
+.omo-notepad.md
+.codegraph/
