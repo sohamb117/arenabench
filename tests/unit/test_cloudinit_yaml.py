@@ -98,7 +98,7 @@ def test_rendered_yaml_parses_and_structure_is_correct() -> None:
     assert write_files[0]["path"] == "/home/agent0/config.json"
     assert write_files[1]["path"] == "/home/agent0/system_prompt.txt"
     runcmd = cast(list[str], doc["runcmd"])
-    assert runcmd == ["loginctl enable-linger agent0", "loginctl enable-linger agent1"]
+    assert runcmd == ["chmod 0700 /home/agent0", "chmod 0700 /home/agent1"]
     assert doc["ssh_pwauth"] is False
     assert doc["disable_root"] is False
 
@@ -134,6 +134,6 @@ def test_rendered_yaml_with_network_full_appends_iptables_runcmd() -> None:
     assert isinstance(parsed, dict)
     doc = cast(dict[str, object], parsed)
     runcmd = cast(list[str], doc["runcmd"])
-    assert runcmd[:2] == ["loginctl enable-linger agent0", "loginctl enable-linger agent1"]
+    assert runcmd[:2] == ["chmod 0700 /home/agent0", "chmod 0700 /home/agent1"]
     assert "iptables -F" in runcmd
     assert "iptables -P INPUT ACCEPT" in runcmd

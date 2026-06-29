@@ -43,14 +43,12 @@ def build_transport_configs(
     key_path: Path | None = None,
     probe_user: str = "root",
     connect_timeout_s: float = 30.0,
-    agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
 ) -> dict[int, SshConfig]:
     """Build the per-port SshConfig dict the SshOrchestratorServer will multiplex.
 
     Extracted so tests can verify env_vars/key_path/remote_command propagation
     without reaching into the SshOrchestratorServer's internal transport map.
     """
-    env_map = agent_env_vars or {}
     configs: dict[int, SshConfig] = {}
     for agent in agents:
         configs[slot_to_port(agent.slot)] = SshConfig(
@@ -59,7 +57,6 @@ def build_transport_configs(
             user=agent.user,
             key_path=key_path,
             connect_timeout_s=connect_timeout_s,
-            env_vars=env_map.get(agent.slot),
         )
     configs[PROBE_PORT] = SshConfig(
         host=ssh_host,
@@ -87,7 +84,6 @@ class SshOrchestratorServer:
         key_path: Path | None = None,
         probe_user: str = "root",
         connect_timeout_s: float = 30.0,
-        agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
     ) -> None:
         configs = build_transport_configs(
             agents=agents,
@@ -96,7 +92,6 @@ class SshOrchestratorServer:
             key_path=key_path,
             probe_user=probe_user,
             connect_timeout_s=connect_timeout_s,
-            agent_env_vars=agent_env_vars,
         )
         self._transports: dict[int, SshTransport] = {
             port: SshTransport(cfg) for port, cfg in configs.items()

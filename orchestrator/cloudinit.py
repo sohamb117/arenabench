@@ -24,12 +24,14 @@ class RenderedAgent:
     config_blob: str
     prompt_blob: str
     cgroup_limits: CgroupLimits | None
+    env_vars: tuple[tuple[str, str], ...]
 
 
 def _build_agents(
     match_config: MatchConfig,
     config_blobs: dict[int, str],
     prompt_blobs: dict[int, str],
+    agent_env_vars: dict[int, tuple[tuple[str, str], ...]],
     template_path: Path,
 ) -> list[RenderedAgent]:
     agents: list[RenderedAgent] = []
@@ -53,6 +55,7 @@ def _build_agents(
                 config_blob=config_blobs[entry.slot],
                 prompt_blob=prompt_blobs[entry.slot],
                 cgroup_limits=match_config.cgroup_limits,
+                env_vars=agent_env_vars.get(entry.slot, ()),
             )
         )
     return agents
@@ -64,9 +67,12 @@ def render_user_data(
     config_blobs: dict[int, str],
     prompt_blobs: dict[int, str],
     ssh_pubkey: str,
+    agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
     template_path: Path = _DEFAULT_TEMPLATE_PATH,
 ) -> str:
-    agents = _build_agents(match_config, config_blobs, prompt_blobs, template_path)
+    agents = _build_agents(
+        match_config, config_blobs, prompt_blobs, agent_env_vars or {}, template_path
+    )
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(template_path.parent),
         autoescape=False,

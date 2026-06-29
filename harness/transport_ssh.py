@@ -23,7 +23,6 @@ class SshConfig:
     connect_timeout_s: float = 10.0
     keepalive_interval_s: float = 30.0
     remote_command: tuple[str, ...] | None = None
-    env_vars: tuple[tuple[str, str], ...] | None = None
 
 
 class SshTransport:
@@ -114,16 +113,16 @@ class SshTransport:
     def _argv(self) -> list[str]:
         key_arg = [] if self._cfg.key_path is None else ["-i", str(self._cfg.key_path)]
         if self._cfg.remote_command is None:
-            command: list[str] = [
-                _GUEST_PYTHON,
-                "-m",
-                "harness",
-                f"/home/{self._cfg.user}/config.json",
-            ]
+            # §3.B9 + Oracle round 19: API keys live in /home/agentN/.secrets
+            # (mode 0600, owner agentN, seeded by cloud-init). Sourcing here keeps
+            # the raw key out of ssh argv and /proc/<pid>/cmdline.
+            harness_cmd = (
+                f". /home/{self._cfg.user}/.secrets 2>/dev/null; "
+                f"exec {_GUEST_PYTHON} -m harness /home/{self._cfg.user}/config.json"
+            )
+            command: list[str] = ["bash", "-lc", harness_cmd]
         else:
             command = list(self._cfg.remote_command)
-        if self._cfg.env_vars:
-            command = ["env", *(f"{k}={v}" for k, v in self._cfg.env_vars), *command]
         return [
             "ssh",
             "-p",

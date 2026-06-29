@@ -96,8 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) >= _MIN_ARGS_WITH_TEMPLATE:
         initial_template = Path(args[1]).read_text(encoding="utf-8")
     else:
-        prompt = config_path.parent / "system_prompt.txt"
-        initial_template = prompt.read_text(encoding="utf-8") if prompt.is_file() else "Begin."
+        initial_template = "Begin."
     transport: Transport = StdioTransport()
     slot = _slot_from_user()
     return run_harness(

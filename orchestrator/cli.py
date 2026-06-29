@@ -79,12 +79,17 @@ def run_match_command(
     log_root: Path = _DEFAULT_LOG_ROOT,
     golden_image: Path = _DEFAULT_GOLDEN,
     arch: str = "aarch64",
+    ephemeral: bool = False,
 ) -> None:
     """Run a match end-to-end. Requires a built golden image + LLM credentials.
 
     arch must be 'aarch64' or 'x86_64'. When --golden-image is left at the
     default and --arch is x86_64, the default is rewritten to the amd64
     golden so users do not need to pass --golden-image alongside --arch.
+
+    --ephemeral (plan §3.B3): pass `snapshot=on` to QEMU's disk0 drive and
+    skip the per-match qcow2 overlay creation/cleanup. Intended for CI /
+    one-shot smoke runs where the per-match overlay would be wasted IO.
     """
     if arch not in _ARCH_TO_IMAGE_SUFFIX:
         typer.echo(f"ERROR --arch must be 'aarch64' or 'x86_64', got {arch!r}", err=True)
@@ -104,7 +109,13 @@ def run_match_command(
         )
         raise typer.Exit(code=_EXIT_RUNTIME_ERROR)
     qemu_arch = cast("Literal['aarch64', 'x86_64']", arch)
-    outcome = _drive_match(config, golden_image=golden_image, log_root=log_root, arch=qemu_arch)
+    outcome = _drive_match(
+        config,
+        golden_image=golden_image,
+        log_root=log_root,
+        arch=qemu_arch,
+        ephemeral=ephemeral,
+    )
     typer.echo(f"DONE result={outcome.result} winner={outcome.winner} cause={outcome.cause}")
 
 
@@ -126,6 +137,7 @@ def _drive_match(
     golden_image: Path,
     log_root: Path,
     arch: Literal["aarch64", "x86_64"] = "aarch64",
+    ephemeral: bool = False,
 ) -> MatchOutcome:
     log_root.mkdir(parents=True, exist_ok=True)
     match_id = make_match_id(config.match_id)
@@ -140,6 +152,7 @@ def _drive_match(
         config_blobs=config_blobs,
         prompt_blobs=prompt_blobs,
         ssh_pubkey=ssh_pubkey,
+        agent_env_vars=agent_env_vars,
     )
     seed_iso = overlay_dir / "seed.iso"
     write_seed_iso(user_data=user_data, out_path=seed_iso)
@@ -157,6 +170,7 @@ def _drive_match(
         console_log=overlay_dir / "vm-console.log",
         host_ssh_port=_SSH_HOST_PORT,
         enable_vsock=False,
+        ephemeral=ephemeral,
     )
     vm = QemuVm(qemu_cfg)
     server = SshOrchestratorServer(
@@ -164,7 +178,6 @@ def _drive_match(
         ssh_host="127.0.0.1",
         ssh_port=_SSH_HOST_PORT,
         key_path=key_path,
-        agent_env_vars=agent_env_vars,
     )
     try:
         vm.create_overlay()

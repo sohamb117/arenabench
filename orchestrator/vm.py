@@ -33,6 +33,7 @@ class QemuConfig:
     console_log: Path | None = None
     host_ssh_port: int | None = None
     enable_vsock: bool = True
+    ephemeral: bool = False
 
 
 class QemuVm:
@@ -48,6 +49,8 @@ class QemuVm:
         return self._cfg.overlay_dir / f"{self._cfg.golden_image.stem}.overlay.qcow2"
 
     def create_overlay(self) -> Path:
+        if self._cfg.ephemeral:
+            return self._overlay
         self._cfg.overlay_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             [
@@ -84,10 +87,9 @@ class QemuVm:
         ]
         if self._cfg.arch == "aarch64":
             argv.extend(self._pflash_args())
+        argv.extend(self._disk0_args())
         argv.extend(
             [
-                "-drive",
-                f"if=none,file={self._overlay},format=qcow2,id=disk0",
                 "-device",
                 "virtio-blk-pci,drive=disk0",
                 "-device",
@@ -119,6 +121,17 @@ class QemuVm:
             ]
         )
         return argv
+
+    def _disk0_args(self) -> list[str]:
+        if self._cfg.ephemeral:
+            return [
+                "-drive",
+                f"if=none,file={self._cfg.golden_image},format=qcow2,id=disk0,snapshot=on",
+            ]
+        return [
+            "-drive",
+            f"if=none,file={self._overlay},format=qcow2,id=disk0",
+        ]
 
     def _netdev_arg(self) -> str:
         if self._cfg.host_ssh_port is None:
@@ -156,6 +169,8 @@ class QemuVm:
             return None
 
     def cleanup(self) -> None:
+        if self._cfg.ephemeral:
+            return
         self._overlay.unlink(missing_ok=True)
 
     @property

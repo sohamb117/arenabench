@@ -46,7 +46,11 @@ class _State:
         )
         self.seq += 1
 
-    def exit(self, reason: Literal["clean", "crash", "shutdown_received"], code: int) -> None:
+    def exit(
+        self,
+        reason: Literal["clean", "crash", "llm_fatal", "shutdown_received"],
+        code: int,
+    ) -> None:
         try:
             self.emit(proto.HarnessExit(reason=reason, code=code, last_turn=self.turn))
         except TransportError:
@@ -78,6 +82,10 @@ def run_harness(
                     return 0
         state.exit("clean", 0)
         return 0
+    except llm.LlmCallError:
+        _LOG.exception("harness loop hit fatal LLM error")
+        state.exit("llm_fatal", 1)
+        return 1
     except Exception:
         _LOG.exception("harness loop crashed")
         state.exit("crash", 1)

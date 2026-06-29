@@ -1,6 +1,10 @@
-"""Tests for SshConfig.env_vars / API-key forwarding + the @e2e roundtrip.
+"""Tests for SSH-launched harness invocation + the @e2e roundtrip.
 
-Split from test_transport_ssh.py for the 250 LOC cap.
+Split from test_transport_ssh.py for the 250 LOC cap. Round-19 reshape:
+SSH no longer carries `env KEY=value` argv (raw-key leak via /proc); the
+default remote command is now `bash -lc '. ~/.secrets; exec python3 -m
+harness ~/config.json'` so the keys live in /home/agentN/.secrets (mode
+0600, owner agentN, seeded by cloud-init).
 """
 
 import os
@@ -32,34 +36,21 @@ def _env(seq: int = 1) -> Envelope:
     )
 
 
-def test_env_vars_prepend_env_prefix_to_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Gap-5 lock: SshConfig.env_vars must inject `env K=V` BEFORE python3 on the remote."""
-    process = FakeSshProcess()
-    argv = patch_popen(monkeypatch, process)
-
-    SshTransport(
-        SshConfig(
-            host="127.0.0.1",
-            port=22222,
-            user="agent0",
-            env_vars=(("ANTHROPIC_API_KEY", "sk-test-1"), ("FOO", "bar")),
-        )
-    ).open()
-
-    env_index = argv.index("env")
-    py_index = argv.index("/opt/arenabench-venv/bin/python3")
-    assert env_index < py_index
-    assert argv[env_index + 1] == "ANTHROPIC_API_KEY=sk-test-1"
-    assert argv[env_index + 2] == "FOO=bar"
-    process.close_pipes()
-
-
-def test_env_vars_none_means_no_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_remote_command_sources_secrets_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round-19 §3.B9 lock: API keys must NOT appear in ssh argv. SshTransport's
+    default remote command sources /home/agentN/.secrets via bash -lc, so the
+    raw key only enters the process environment from a 0600 file on the guest.
+    """
     process = FakeSshProcess()
     argv = patch_popen(monkeypatch, process)
 
     SshTransport(SshConfig(host="127.0.0.1", port=22222, user="agent0")).open()
 
+    bash_idx = argv.index("bash")
+    assert argv[bash_idx + 1] == "-lc"
+    cmd = argv[bash_idx + 2]
+    assert ". /home/agent0/.secrets" in cmd
+    assert "exec /opt/arenabench-venv/bin/python3 -m harness /home/agent0/config.json" in cmd
     assert "env" not in argv
     process.close_pipes()
 
