@@ -47,11 +47,17 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         state_name = new_state
 
     def finish(result: str, winner_slot: int | None, cause: str) -> MatchOutcome:
-        transition("DONE", cause)
-        ctx.logger.close()
         res_lit = cast(Literal["victory", "draw", "timeout", "error"], result)
         out = MatchOutcome(result=res_lit, winner=winner_slot, cause=cause, final_state="DONE")
+        term = mk_env(
+            "match_terminated",
+            MatchTerminated(result=res_lit, winner=winner_slot, cause=cause),
+            dst="broadcast",
+        )
+        ctx.logger.write_envelope(term)
         ctx.logger.write_summary(out.model_dump())
+        transition("DONE", cause)
+        ctx.logger.close()
         return out
 
     transition("VM_BOOTING", "run_match_called")
@@ -166,10 +172,12 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
 
         alive_set: set[int] = set()
         for slot, st in agents.items():
+            if st.dead_emitted:
+                continue
             lstate = st.to_liveness()
             if liveness.is_alive(lstate, now, ctx.liveness):
                 alive_set.add(slot)
-            elif not st.dead_emitted:
+            else:
                 st.dead_emitted = True
                 cause = liveness.cause_of_death(lstate, now, ctx.liveness)
                 dead_env = mk_env(
@@ -178,6 +186,20 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                     dst="broadcast",
                 )
                 ctx.logger.write_envelope(dead_env)
+
+        if cast(str, state_name) == "HARNESSES_UP" and len(alive_set) < ctx.match_config.n_agents:
+            transition("IN_MATCH", "agent_died_pre_llm")
+
+        if cast(str, state_name) not in {"IN_MATCH", "WINNER_GRACE"}:
+            if (
+                cast(str, state_name) == "HARNESSES_UP"
+                and ctx.clock() - match_start_ts > ctx.match_config.max_duration_s
+            ):
+                transition("ARCHIVING", "max_duration_exceeded")
+                time.sleep(ctx.match_config.archive_grace_s)
+                return finish("timeout", None, "max_duration_exceeded")
+            time.sleep(ctx.poll_interval_s)
+            continue
 
         out = winner.resolve(
             alive=cast("set[winner.AgentSlot]", alive_set),
@@ -194,16 +216,6 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                 transition("WINNER_GRACE", "grace_started")
         else:
             transition("ARCHIVING", out.cause)
-            term = mk_env(
-                "match_terminated",
-                MatchTerminated(
-                    result=out.result,
-                    winner=out.winner,
-                    cause=out.cause,
-                ),
-                dst="broadcast",
-            )
-            ctx.logger.write_envelope(term)
             time.sleep(ctx.match_config.archive_grace_s)
             return finish(out.result, out.winner, out.cause)
 

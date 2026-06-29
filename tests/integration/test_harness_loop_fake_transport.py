@@ -70,9 +70,11 @@ def test_heartbeat_injected_before_next_llm_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = run_harness_thread(
-        tmp_path, monkeypatch, [make_response(command="id"), make_response(task_complete=True)]
+        tmp_path,
+        monkeypatch,
+        [make_response(), make_response(task_complete=True), make_response(task_complete=True)],
     )
-    first_turn = [recv(run.peer) for _ in range(6)]
+    first_turn = [recv(run.peer) for _ in range(4)]
     send(run.peer, HeartbeatTick(elapsed_s=12.0, turn_hint=1))
     heartbeat = recv(run.peer)
     request = recv(run.peer)

@@ -28,18 +28,7 @@ def parse_json(raw: str) -> ParsedResponse:
         raise ParseError("No JSON object found", parser="json")
 
     start_idx = raw.find("{", match.start())
-    open_braces = 0
-    end_idx = -1
-
-    for i in range(start_idx, len(raw)):
-        if raw[i] == "{":
-            open_braces += 1
-        elif raw[i] == "}":
-            open_braces -= 1
-            if open_braces == 0:
-                end_idx = i
-                break
-
+    end_idx = _find_matching_brace(raw, start_idx)
     if end_idx == -1:
         raise ParseError("Unbalanced braces in JSON", parser="json")
 
@@ -59,6 +48,32 @@ def parse_json(raw: str) -> ParsedResponse:
         return ParsedResponse.model_validate(data)
     except Exception as e:
         raise ParseError(f"Validation failed: {e}", parser="json") from e
+
+
+def _find_matching_brace(raw: str, start_idx: int) -> int:
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start_idx, len(raw)):
+        char = raw[i]
+        if escape:
+            escape = False
+            continue
+        if char == "\\" and in_string:
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
 
 
 def parse_xml(raw: str) -> ParsedResponse:

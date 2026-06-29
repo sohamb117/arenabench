@@ -125,11 +125,12 @@ def _process_pending(state: _State, chat: Chat, silence_threshold_s: float) -> i
 
 def _handle_inbound(env: proto.Envelope, chat: Chat, state: _State) -> int | None:
     if isinstance(env.data, proto.HeartbeatTick):
+        if chat.history and chat.history[-1].role == "user":
+            return None
         try:
             payload = heartbeat.inject(chat, env.data.elapsed_s, state.turn)
         except LifecycleError:
-            chat.summarize(f"[context summarized at turn {state.turn}]")
-            payload = heartbeat.inject(chat, env.data.elapsed_s, state.turn)
+            return None
         state.emit(
             proto.HeartbeatInjected(turn=state.turn, elapsed_s=env.data.elapsed_s, payload=payload)
         )
@@ -142,6 +143,9 @@ def _handle_inbound(env: proto.Envelope, chat: Chat, state: _State) -> int | Non
 def _llm_turn(
     state: _State, chat: Chat, tmux: shell.TmuxShell, cfg: config.AgentConfig, api_key: str
 ) -> parser.ParsedResponse | None:
+    if chat.history and chat.history[-1].role == "assistant":
+        chat.append_user("Continue.")
+    chat.trim_to_fit()
     request_id = f"llm-{state.turn}-{uuid.uuid4().hex[:_ID_BYTES]}"
     messages = helpers.chat_history_for_litellm(chat)
     state.emit(
@@ -164,13 +168,13 @@ def _llm_turn(
         fallbacks=cfg.fallbacks,
         api_key=api_key,
     )
-    parsed = helpers.parse_or_record_error(result, cfg.parser, state.turn, request_id, state.emit)
+    parsed = helpers.parse_or_record_error(
+        result, cfg.parser, state.turn, request_id, state.emit, chat
+    )
     if parsed is None:
         return None
     chat.append_assistant(result.content)
     helpers.run_commands(parsed, state.turn, chat, tmux, state.emit, _ID_BYTES)
-    if not parsed.commands and not state.pending_complete:
-        chat.append_user("No bash commands executed.")
     return parsed
 
 

@@ -40,11 +40,18 @@ def parse_or_record_error(
     turn: int,
     request_id: str,
     emit: Emit,
+    chat: Chat,
 ) -> parser.ParsedResponse | None:
     try:
         parsed = parser.parse(result.content, mode=mode)
     except parser.ParseError as exc:
         emit(build_llm_response(result, mode, turn, request_id, False, str(exc)))
+        chat.append_assistant(result.content)
+        chat.append_user(
+            f"Your previous response did not parse as {mode}: {exc}. "
+            f"Reply with a valid {mode} object: "
+            '{"analysis": "...", "plan": "...", "commands": [...], "task_complete": false}'
+        )
         return None
     emit(build_llm_response(result, mode, turn, request_id, True, None))
     return parsed
@@ -58,6 +65,9 @@ def run_commands(
     emit: Emit,
     id_bytes: int,
 ) -> None:
+    if not parsed.commands:
+        return
+    outputs: list[str] = []
     for index, command in enumerate(parsed.commands):
         request_id = f"bash-{turn}-{index}-{uuid.uuid4().hex[:id_bytes]}"
         emit(proto.BashRequest(turn=turn, request_id=request_id, commands=[command]))
@@ -76,7 +86,8 @@ def run_commands(
                 duration_s=result.duration_s,
             )
         )
-        chat.append_user(chat.truncate_terminal_output(result.terminal_output))
+        outputs.append(f"$ {command.keystrokes}\n{result.terminal_output}")
+    chat.append_user(chat.truncate_terminal_output("\n".join(outputs)))
 
 
 def chat_history_for_litellm(chat: Chat) -> list[dict[str, str]]:
