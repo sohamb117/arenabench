@@ -84,5 +84,17 @@ WantedBy=multi-user.target
 UNIT
 systemctl enable arenabench-allowlist.service
 
+# Plan §13 G5 / W6.3 — snapshot installed packages so vm/images/MANIFEST.json
+# + vm/CVES.md can be reproduced from the actual built image without re-booting
+# it. Written inside the VM at customize time so it captures the exact set the
+# allowlist + harness are running against (apt list output is locale-stable;
+# the leading "Listing..." header line is stripped).
+mkdir -p /etc/arenabench
+apt list --installed 2>/dev/null \
+    | tail -n +2 \
+    | sort \
+    > /etc/arenabench/installed-packages.txt
+chmod 0644 /etc/arenabench/installed-packages.txt
+
 echo "$(date -Iseconds) === arenabench customize.sh done ==="
 

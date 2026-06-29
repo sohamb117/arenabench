@@ -214,6 +214,23 @@ echo ">>> finalizing golden image"
 mv "$GOLDEN_PATH.tmp" "$GOLDEN_PATH"
 GOLDEN_SHA256=$(shasum -a 256 "$GOLDEN_PATH" | awk '{print $1}')
 
+# Plan §13 G5 / W6.3 — extract the apt-list snapshot written by customize.sh
+# (best-effort: libguestfs is the only portable way to read a qcow2 without
+# booting it, and it ships separately from QEMU). On hosts without virt-cat
+# we record the deferral in MANIFEST so the audit trail is honest.
+PACKAGES_FILE="$IMAGES_DIR/installed-packages-${ARCH}.txt"
+PACKAGES_SOURCE="unavailable: install libguestfs (virt-cat) to snapshot /etc/arenabench/installed-packages.txt"
+if command -v virt-cat >/dev/null 2>&1; then
+    if virt-cat -a "$GOLDEN_PATH" /etc/arenabench/installed-packages.txt \
+        > "$PACKAGES_FILE.tmp" 2>/dev/null; then
+        mv "$PACKAGES_FILE.tmp" "$PACKAGES_FILE"
+        PACKAGES_SOURCE="vm/images/installed-packages-${ARCH}.txt"
+    else
+        rm -f "$PACKAGES_FILE.tmp"
+        PACKAGES_SOURCE="unavailable: virt-cat could not read /etc/arenabench/installed-packages.txt from the golden image"
+    fi
+fi
+
 cat > "$MANIFEST_PATH" <<EOF
 {
   "schema": "arenabench/golden-manifest/v1",
@@ -227,13 +244,15 @@ cat > "$MANIFEST_PATH" <<EOF
     "path": "vm/images/$GOLDEN_NAME",
     "sha256": "$GOLDEN_SHA256"
   },
+  "installed_packages_source": "$PACKAGES_SOURCE",
   "customizations": [
     "python3 tmux git iptables",
     "uv via curl|sh",
     "arenabench harness package (wheel)",
     "vm/guest_probe.py installed as /usr/local/sbin/arenabench-guest-probe",
     "iptables allowlist enabled at boot via systemd unit",
-    "no sudo, default Debian setuid binaries preserved"
+    "no sudo, default Debian setuid binaries preserved",
+    "apt list --installed snapshot at /etc/arenabench/installed-packages.txt"
   ]
 }
 EOF
@@ -242,3 +261,4 @@ echo
 echo "OK: golden image built at $GOLDEN_PATH"
 echo "    Manifest: $MANIFEST_PATH"
 echo "    SHA256: $GOLDEN_SHA256"
+echo "    Packages snapshot: $PACKAGES_SOURCE"
