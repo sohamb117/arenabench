@@ -199,10 +199,11 @@ def test_s17_max_duration_timeout(tmp_path: Path) -> None:
     """S17 + §14.9: max_duration_s elapses with >1 alive → result=='timeout',
     cause=='max_duration_exceeded' (orchestrator/winner.py:80).
 
-    Uses configs/matches/s17-timeout.json (max_duration_s=60) so the deadline
-    fires deterministically before LLM-driven adversarial play can finish a
-    1v1. When ANY agent dies before the deadline, test still asserts result
-    is one of the two valid outcomes — timeout is the §14.9 target.
+    Determinism: uses configs/matches/s17-timeout.json with passive agent
+    configs (configs/agents/passive-*.json + configs/prompts/passive.txt)
+    that explicitly tell the LLM to never run commands. With both agents
+    passive and max_duration_s=60s, no kill happens and the deadline fires
+    every run. Asserts the §14.9 binary observable STRICTLY (no skip).
     """
     _skip_if_no_e2e()
 
@@ -212,11 +213,6 @@ def test_s17_max_duration_timeout(tmp_path: Path) -> None:
         _run_match(S17_TIMEOUT_MATCH, log_root=log_root, match_id="s17-timeout")
     )
 
-    if summary.get("result") == "timeout":
-        assert summary.get("cause") == "max_duration_exceeded"
-        assert summary.get("winner") is None
-    else:
-        pytest.skip(
-            f"S17 timeout requires no winner before max_duration_s=60s; "
-            f"got {summary.get('result')!r}. Increase max_duration_s or rerun."
-        )
+    assert summary.get("result") == "timeout", summary
+    assert summary.get("cause") == "max_duration_exceeded", summary
+    assert summary.get("winner") is None, summary

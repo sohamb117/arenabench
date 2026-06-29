@@ -184,7 +184,7 @@ class QemuVm:
         return f"q35,accel={accel}"
 
     def _cpu_arg(self, accel: Literal["hvf", "tcg"]) -> str:
-        if self._cfg.arch == "x86_64" and accel == "tcg":
+        if accel == "tcg":
             return "max"
         return "host"
 

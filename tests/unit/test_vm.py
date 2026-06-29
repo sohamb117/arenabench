@@ -81,6 +81,28 @@ def test_build_argv_constructs_aarch64_hvf_command(tmp_path: Path) -> None:
     assert "virtio-net-pci,netdev=net0" in argv
 
 
+def test_build_argv_uses_max_cpu_for_aarch64_tcg(tmp_path: Path) -> None:
+    """Round-8 lock: aarch64+TCG (macOS Docker / non-virtualized) must NOT
+    use `-cpu host` (HVF/KVM-only); `max` is the emulated equivalent.
+    """
+    base = _cfg(tmp_path)
+    cfg = QemuConfig(
+        golden_image=base.golden_image,
+        overlay_dir=base.overlay_dir,
+        arch="aarch64",
+        cid=base.cid,
+        accel="tcg",
+        seed_iso=base.seed_iso,
+        edk2_code=base.edk2_code,
+        edk2_vars=base.edk2_vars,
+    )
+
+    argv = QemuVm(cfg).build_argv()
+
+    assert argv[argv.index("-machine") + 1] == "virt,accel=tcg"
+    assert argv[argv.index("-cpu") + 1] == "max"
+
+
 def test_build_argv_constructs_x86_64_tcg_command(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, arch="x86_64")
     vm = QemuVm(cfg)

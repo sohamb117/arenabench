@@ -22,10 +22,9 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 IMAGES_DIR="$ROOT/vm/images"
 ARCH="${ARENABENCH_ARCH:-aarch64}"            # aarch64 (apple silicon) | amd64 (intel/amd)
 DEBIAN_RELEASE="${ARENABENCH_DEBIAN_RELEASE:-12.7.0}"  # pinned point release (B11)
-GOLDEN_NAME="arenabench-golden-${ARCH}.qcow2"
-GOLDEN_PATH="$IMAGES_DIR/$GOLDEN_NAME"
-MANIFEST_PATH="$IMAGES_DIR/MANIFEST.json"
 
+# Normalize ARCH BEFORE deriving filename so x86_64 input maps to amd64
+# golden naming (matches orchestrator/cli.py _ARCH_TO_IMAGE_SUFFIX).
 case "$ARCH" in
     aarch64)
         BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64-${DEBIAN_RELEASE}.qcow2"
@@ -40,6 +39,10 @@ case "$ARCH" in
         ;;
     *)       echo "ERROR: unsupported ARENABENCH_ARCH=$ARCH (use aarch64 or amd64)" >&2; exit 1 ;;
 esac
+
+GOLDEN_NAME="arenabench-golden-${ARCH}.qcow2"
+GOLDEN_PATH="$IMAGES_DIR/$GOLDEN_NAME"
+MANIFEST_PATH="$IMAGES_DIR/MANIFEST.json"
 
 mkdir -p "$IMAGES_DIR"
 BASE_PATH="$IMAGES_DIR/debian-12-genericcloud-${ARCH}-${DEBIAN_RELEASE}.qcow2"
@@ -88,8 +91,8 @@ package_upgrade: false
 runcmd:
   - mkdir -p /opt/arenabench
   - tar -xzf /tmp/arenabench.tar.gz -C /opt/arenabench
-  - bash /var/lib/cloud/scripts/customize.sh
-  - shutdown -h +1
+  - bash /var/lib/cloud/scripts/customize.sh && touch /var/lib/arenabench-customize-success
+  - test -f /var/lib/arenabench-customize-success && shutdown -h +1
 write_files:
   - path: /tmp/arenabench.tar.gz
     encoding: base64
@@ -121,23 +124,54 @@ elif "$QEMU_BIN" -accel help 2>/dev/null | grep -q '^kvm$'; then
 else
     ACCEL="tcg"
 fi
-# `-cpu host` requires HVF or KVM passthrough; mirror orchestrator/vm.py:_cpu_arg
-# so the amd64 TCG path uses `max` instead of failing with "host unavailable".
-if [[ "$ARCH" == "amd64" && "$ACCEL" == "tcg" ]]; then
+# `-cpu host` requires HVF or KVM passthrough; under TCG fallback use `max`
+# regardless of architecture (mirror orchestrator/vm.py:_cpu_arg). aarch64 TCG
+# is the macOS Docker / non-virtualized CI path per plan R1.
+if [[ "$ACCEL" == "tcg" ]]; then
     CPU_ARG="max"
 else
     CPU_ARG="host"
 fi
+
+# Portable timeout wrapper: GNU coreutils ships `timeout`; macOS ships nothing
+# by default (homebrew coreutils gives `gtimeout`). Fall back to a bash
+# background+kill timer so the build still halts on hangs without forcing the
+# user to install coreutils.
+if command -v timeout >/dev/null 2>&1; then
+    QEMU_TIMEOUT_CMD=(timeout 1800)
+elif command -v gtimeout >/dev/null 2>&1; then
+    QEMU_TIMEOUT_CMD=(gtimeout 1800)
+else
+    QEMU_TIMEOUT_CMD=()
+fi
+
 echo "    qemu binary: $QEMU_BIN  machine: $MACHINE_TYPE  accel: $ACCEL  cpu: $CPU_ARG"
-if ! timeout 1800 "$QEMU_BIN" -machine "$MACHINE_TYPE,accel=$ACCEL" -cpu "$CPU_ARG" \
+qemu_run() {
+    "$QEMU_BIN" -machine "$MACHINE_TYPE,accel=$ACCEL" -cpu "$CPU_ARG" \
         -smp 2 -m 2048 -nographic \
         -drive if=none,file="$GOLDEN_PATH.tmp",format=qcow2,id=disk0 -device virtio-blk-pci,drive=disk0 \
         -drive if=none,file="$TMP/seed.iso",format=raw,media=cdrom,id=seed0 -device scsi-cd,drive=seed0 \
         -device virtio-scsi-pci \
-        -netdev user,id=net0 -device virtio-net-pci,netdev=net0; then
-    echo "ERROR: QEMU customization boot failed or exceeded 1800s timeout" >&2
-    rm -f "$GOLDEN_PATH.tmp"
-    exit 1
+        -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+}
+if [[ ${#QEMU_TIMEOUT_CMD[@]} -gt 0 ]]; then
+    if ! "${QEMU_TIMEOUT_CMD[@]}" bash -c "$(declare -f qemu_run); qemu_run"; then
+        echo "ERROR: QEMU customization boot failed or exceeded 1800s timeout" >&2
+        rm -f "$GOLDEN_PATH.tmp"
+        exit 1
+    fi
+else
+    qemu_run &
+    QEMU_PID=$!
+    ( sleep 1800 && kill -TERM "$QEMU_PID" 2>/dev/null ) &
+    TIMER_PID=$!
+    if ! wait "$QEMU_PID"; then
+        kill -TERM "$TIMER_PID" 2>/dev/null || true
+        echo "ERROR: QEMU customization boot failed or exceeded 1800s timeout" >&2
+        rm -f "$GOLDEN_PATH.tmp"
+        exit 1
+    fi
+    kill -TERM "$TIMER_PID" 2>/dev/null || true
 fi
 
 echo ">>> finalizing golden image"

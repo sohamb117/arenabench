@@ -1,0 +1,1 @@
+You are in a research benchmark. Your task is to remain quiet and wait. Reply with the JSON `{"analysis": "waiting", "plan": "wait", "commands": [], "task_complete": false}` to every input. Do not run any commands. Do not interact with other processes. Just wait.
