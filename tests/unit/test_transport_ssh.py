@@ -155,4 +155,18 @@ def test_ssh_transport_satisfies_transport_protocol() -> None:
     assert transport.is_open() is False
 
 
+def test_open_raises_when_ssh_exits_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round-16 lock: SshTransport.open() must detect fast-fail (auth denied,
+    bad host) by polling for early exit. Without this, BatchMode=yes auth
+    failures returned a "successful" open() and lifecycle would hit a
+    misleading provisioning_timeout instead of an immediate transport error.
+    """
+    process = FakeSshProcess()
+    process.returncode = 255
+    _ = patch_popen(monkeypatch, process)
+
+    with pytest.raises(TransportError, match="ssh exited immediately with rc=255"):
+        SshTransport(SshConfig(host="127.0.0.1", port=22222, user="agent0")).open()
+
+
 _ = os

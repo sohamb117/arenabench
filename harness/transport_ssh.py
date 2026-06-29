@@ -11,6 +11,7 @@ from common.errors import TransportError
 from common.protocol import MAX_FRAME_BYTES, Envelope, parse_envelope, serialize_envelope
 
 _GUEST_PYTHON = "/opt/arenabench-venv/bin/python3"
+_OPEN_PROBE_TIMEOUT_S = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,11 @@ class SshTransport:
             text=False,
             bufsize=0,
         )
+        try:
+            rc = self._proc.wait(timeout=_OPEN_PROBE_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            return
+        raise self._error(f"ssh exited immediately with rc={rc}")
 
     def is_open(self) -> bool:
         return self._proc is not None and self._proc.poll() is None

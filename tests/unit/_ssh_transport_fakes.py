@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 import pytest
 
@@ -45,8 +46,9 @@ class FakeSshProcess:
         self.returncode = -15
 
     def wait(self, timeout: float | None = None) -> int:
-        _ = timeout
-        return self.returncode if self.returncode is not None else 0
+        if self.returncode is None:
+            raise subprocess.TimeoutExpired(cmd="ssh", timeout=timeout or 0.0)
+        return self.returncode
 
     def kill(self) -> None:
         self.killed = True
