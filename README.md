@@ -77,8 +77,8 @@ The immutable Debian 12 base image is built once and reused per-match (overlays 
 # Intel/AMD
 ARENABENCH_ARCH=amd64 ./vm/golden/build.sh
 
-# Different point release (e.g. when re-pinning for new CVE fixes)
-ARENABENCH_DEBIAN_RELEASE=12.7.0 ./vm/golden/build.sh
+# Different Debian cloud build (browse https://cloud.debian.org/images/cloud/bookworm/)
+ARENABENCH_DEBIAN_RELEASE=20260615-2510 ./vm/golden/build.sh
 ```
 
 The pipeline downloads the Debian generic-cloud image, packages the arenabench source as a base64-encoded tarball inside the cloud-init seed-iso, runs `customize.sh` once inside the booted VM (installs `python3`, `uv`, `tmux`, `iptables`, then creates a Python 3.12 venv at `/opt/arenabench-venv` and `uv pip install`s the harness there, installs the [iptables allowlist](vm/golden/allowlist-iptables.sh), and the guest-probe), then finalizes the qcow2 + writes `vm/images/MANIFEST.json` with SHA256 + customization manifest. Takes 5–30 min depending on host (slower on Apple Silicon TCG fallback per plan R1).

@@ -2,7 +2,7 @@
 # vm/golden/build.sh — produces vm/images/arenabench-golden-<arch>.qcow2
 #
 # Pipeline:
-#   1. Download Debian 12 generic-cloud image (pinned point release)
+#   1. Download Debian 12 generic-cloud image (pinned build-ID)
 #   2. Resize to a working size
 #   3. Boot it once headless with a customize seed-iso that runs customize.sh
 #   4. Power off, finalize the qcow2 as the immutable golden base
@@ -21,18 +21,23 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 IMAGES_DIR="$ROOT/vm/images"
 ARCH="${ARENABENCH_ARCH:-aarch64}"            # aarch64 (apple silicon) | amd64 (intel/amd)
-DEBIAN_RELEASE="${ARENABENCH_DEBIAN_RELEASE:-12.7.0}"  # pinned point release (B11)
+# Debian publishes cloud images under date-stamped build-ID directories,
+# NOT semver point releases. Browse https://cloud.debian.org/images/cloud/bookworm/
+# to pick a stable build-ID (or use `latest` for the rolling pointer; not
+# recommended for the plan §3.B11 pin contract). The env name keeps the
+# legacy `RELEASE` token for backward compat; the value is a build-ID.
+DEBIAN_RELEASE="${ARENABENCH_DEBIAN_RELEASE:-20260615-2510}"
 
 # Normalize ARCH BEFORE deriving filename so x86_64 input maps to amd64
 # golden naming (matches orchestrator/cli.py _ARCH_TO_IMAGE_SUFFIX).
 case "$ARCH" in
     aarch64)
-        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64-${DEBIAN_RELEASE}.qcow2"
+        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64.qcow2"
         QEMU_BIN="qemu-system-aarch64"
         MACHINE_TYPE="virt"
         ;;
     amd64|x86_64)
-        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-amd64-${DEBIAN_RELEASE}.qcow2"
+        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-amd64.qcow2"
         QEMU_BIN="qemu-system-x86_64"
         MACHINE_TYPE="q35"
         ARCH="amd64"

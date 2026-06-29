@@ -9,9 +9,16 @@ that records the CVE landscape at pin time.
 ## Pinned release
 
 - **Distro**: Debian 12 (bookworm)
-- **Point release**: 12.7.0 (set via `ARENABENCH_DEBIAN_RELEASE` env at build time)
+- **Build-ID**: 20260615-2510 (set via `ARENABENCH_DEBIAN_RELEASE` env at build time;
+  env name kept for backward compat — the value is a build-ID, not semver)
 - **Pin date**: 2026-06-29
-- **Image source**: `https://cloud.debian.org/images/cloud/bookworm/12.7.0/`
+- **Image source**: `https://cloud.debian.org/images/cloud/bookworm/20260615-2510/`
+
+> Debian's cloud image distribution channel publishes under date-stamped
+> build-ID directories (`YYYYMMDD-NNNN/`), NOT semver point releases. Browse
+> https://cloud.debian.org/images/cloud/bookworm/ to pick a newer pin. The
+> SHA256 captured in `vm/images/MANIFEST.json` is the actual immutable
+> source-of-truth for the pin per plan §3.B11.
 
 ## CVE snapshot procedure
 
