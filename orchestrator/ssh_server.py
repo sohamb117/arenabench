@@ -66,6 +66,7 @@ class SshOrchestratorServer:
             user=probe_user,
             key_path=key_path,
             connect_timeout_s=connect_timeout_s,
+            remote_command=("python3", "-m", "vm.guest_probe"),
         )
         self._transports[PROBE_PORT] = SshTransport(probe_cfg)
 

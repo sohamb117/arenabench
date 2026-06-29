@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import cast
 
@@ -105,13 +106,32 @@ def test_log_completeness(tmp_path: Path) -> None:
 
 
 def _run_match(match_config: Path, *, log_root: Path, match_id: str) -> Path:
-    """Drive an end-to-end run via the orchestrator CLI; return summary path.
+    """Drive end-to-end via `arenabench run` subprocess; return summary.json path.
 
-    Stub for now — orchestrator.cli.run is wired in v1+ to actually spawn
-    QEMU + open transport + run lifecycle.run_match. Until then, this test
-    skips when ARENABENCH_E2E=1 reveals the CLI is unwired.
+    Uses the production CLI so the test exercises the full user-facing path
+    (typer entry → _drive_match → QemuVm + SshOrchestratorServer + run_match).
     """
-    pytest.skip(
-        "orchestrator.cli.run is wired in a future revision; "
-        f"would invoke `arenabench run {match_config}` with log_root={log_root}"
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "arenabench",
+            "run",
+            str(match_config),
+            "--log-root",
+            str(log_root),
+            "--golden-image",
+            str(GOLDEN_IMAGE_PATH),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=3600,
+        check=False,
     )
+    if result.returncode != 0:
+        pytest.fail(
+            f"arenabench run exited {result.returncode}\nstdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    return log_root / "matches" / match_id / "summary.json"

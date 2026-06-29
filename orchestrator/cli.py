@@ -15,10 +15,11 @@ import typer
 from common.clock import now_monotonic_s
 from common.errors import ConfigError
 from common.ids import make_match_id
+from orchestrator.cloudinit import render_user_data, write_seed_iso
 from orchestrator.lifecycle import MatchContext, MatchOutcome, run_match
 from orchestrator.liveness import LivenessThresholds
 from orchestrator.logger import MatchLogger
-from orchestrator.match_config import MatchConfig, load_match_config
+from orchestrator.match_config import AgentEntry, MatchConfig, load_match_config
 from orchestrator.ssh_server import PROBE_PORT, SshOrchestratorServer
 from orchestrator.vm import QemuConfig, QemuVm, detect_accel
 
@@ -105,13 +106,24 @@ def _drive_match(config: MatchConfig, *, golden_image: Path, log_root: Path) -> 
     logger = MatchLogger(log_root, match_id, config.n_agents)
     overlay_dir = log_root / "matches" / config.match_id / "vm"
     overlay_dir.mkdir(parents=True, exist_ok=True)
+    config_blobs, prompt_blobs = _load_agent_blobs(config.agents)
+    user_data = render_user_data(
+        match_config=config, config_blobs=config_blobs, prompt_blobs=prompt_blobs
+    )
+    seed_iso = overlay_dir / "seed.iso"
+    write_seed_iso(user_data=user_data, out_path=seed_iso)
+    edk2_code, edk2_vars = _detect_edk2_pflash()
     qemu_cfg = QemuConfig(
         golden_image=golden_image,
         overlay_dir=overlay_dir,
         arch="aarch64",
         cid=3,
         accel=detect_accel(),
+        seed_iso=seed_iso,
+        edk2_code=edk2_code,
+        edk2_vars=edk2_vars,
         console_log=overlay_dir / "vm-console.log",
+        host_ssh_port=_SSH_HOST_PORT,
     )
     vm = QemuVm(qemu_cfg)
     server = SshOrchestratorServer(
@@ -139,6 +151,51 @@ def _drive_match(config: MatchConfig, *, golden_image: Path, log_root: Path) -> 
         server.stop()
         vm.terminate()
         vm.cleanup()
+
+
+def _load_agent_blobs(
+    agents: list[AgentEntry],
+) -> tuple[dict[int, str], dict[int, str]]:
+    config_blobs: dict[int, str] = {}
+    prompt_blobs: dict[int, str] = {}
+    for agent in agents:
+        agent_cfg_path = _REPO_ROOT / agent.config
+        config_blobs[agent.slot] = agent_cfg_path.read_text(encoding="utf-8")
+        cfg_raw = cast(object, json.loads(config_blobs[agent.slot]))
+        if not isinstance(cfg_raw, dict):
+            raise ConfigError(
+                "agent config must be a JSON object",
+                path=str(agent_cfg_path),
+                field="<root>",
+            )
+        cfg_json = cast(dict[str, object], cfg_raw)
+        prompt_rel = cfg_json.get("system_prompt_path")
+        if not isinstance(prompt_rel, str):
+            raise ConfigError(
+                "system_prompt_path missing from agent config",
+                path=str(agent_cfg_path),
+                field="system_prompt_path",
+            )
+        prompt_blobs[agent.slot] = (_REPO_ROOT / prompt_rel).read_text(encoding="utf-8")
+    return config_blobs, prompt_blobs
+
+
+def _detect_edk2_pflash() -> tuple[Path | None, Path | None]:
+    candidates_code = [
+        Path("/opt/homebrew/share/qemu/edk2-aarch64-code.fd"),
+        Path("/usr/local/share/qemu/edk2-aarch64-code.fd"),
+        Path("/usr/share/qemu/edk2-aarch64-code.fd"),
+        Path("/usr/share/AAVMF/AAVMF_CODE.fd"),
+    ]
+    candidates_vars = [
+        Path("/opt/homebrew/share/qemu/edk2-arm-vars.fd"),
+        Path("/usr/local/share/qemu/edk2-arm-vars.fd"),
+        Path("/usr/share/qemu/edk2-arm-vars.fd"),
+        Path("/usr/share/AAVMF/AAVMF_VARS.fd"),
+    ]
+    code = next((p for p in candidates_code if p.is_file()), None)
+    vars_ = next((p for p in candidates_vars if p.is_file()), None)
+    return code, vars_
 
 
 def _wait_for_ssh(host: str, port: int, timeout_s: float) -> None:

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from common.errors import LifecycleError
 from common.ids import make_match_id
@@ -27,7 +28,9 @@ NOW = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
 LOG_ROOT_NAME = "logs"
 MATCH_ID_VALUE = "match-001"
 WROTE_SUMMARY_RESULT = "victory"
-WROTE_SUMMARY_WINNER = "agent0"
+WROTE_SUMMARY_WINNER = 0
+WROTE_SUMMARY_CAUSE = "opponent_crashed"
+WROTE_SUMMARY_FINAL_STATE = "DONE"
 ZERO_SLOT = 0
 ONE_SLOT = 1
 TWO_AGENTS = 2
@@ -210,10 +213,36 @@ def test_unknown_src_raises_lifecycle_error(tmp_path: Path) -> None:
 def test_write_summary_overwrites_sorted_json(tmp_path: Path) -> None:
     logger = _match_logger(tmp_path, TWO_AGENTS)
 
-    logger.write_summary({"result": WROTE_SUMMARY_RESULT, "winner": WROTE_SUMMARY_WINNER})
+    logger.write_summary(
+        {
+            "result": WROTE_SUMMARY_RESULT,
+            "winner": WROTE_SUMMARY_WINNER,
+            "cause": WROTE_SUMMARY_CAUSE,
+            "final_state": WROTE_SUMMARY_FINAL_STATE,
+        }
+    )
 
     summary_text = (logger.match_dir / "summary.json").read_text(encoding="utf-8")
-    assert summary_text == '{\n  "result": "victory",\n  "winner": "agent0"\n}'
+    assert summary_text == (
+        "{\n"
+        f'  "cause": "{WROTE_SUMMARY_CAUSE}",\n'
+        f'  "final_state": "{WROTE_SUMMARY_FINAL_STATE}",\n'
+        f'  "result": "{WROTE_SUMMARY_RESULT}",\n'
+        f'  "winner": {WROTE_SUMMARY_WINNER}\n'
+        "}"
+    )
+
+
+def test_write_summary_rejects_invalid_dict(tmp_path: Path) -> None:
+    """Drift guard: write_summary must reject inputs that violate summary.schema.json."""
+    logger = _match_logger(tmp_path, TWO_AGENTS)
+
+    with pytest.raises(ValidationError):
+        logger.write_summary(
+            {"result": "victory", "winner": "agent0", "cause": "x", "final_state": "DONE"}
+        )
+    with pytest.raises(ValidationError):
+        logger.write_summary({"result": "victory", "winner": 0, "cause": "", "final_state": "DONE"})
 
 
 def test_context_manager_closes_files(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol, cast
+from typing import Annotated, Literal, Protocol, cast
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from common.ids import AgentSlot
 from common.protocol import Envelope
@@ -21,8 +21,8 @@ class VsockServerLike(Protocol):
 class MatchOutcome(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     result: Literal["victory", "draw", "timeout", "error"]
-    winner: int | None
-    cause: str
+    winner: Annotated[int, Field(ge=0, le=15)] | None
+    cause: Annotated[str, Field(min_length=1)]
     final_state: Literal["DONE"]
 
 

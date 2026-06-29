@@ -49,6 +49,25 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 cp "$HERE/customize.sh"            "$TMP/customize.sh"
 cp "$HERE/allowlist-iptables.sh"   "$TMP/allowlist-iptables.sh"
+
+# Package the repo into the seed-iso so customize.sh finds it at /opt/arenabench
+# before `uv pip install --system` (cross-script contract with vm/golden/customize.sh).
+echo ">>> packaging arenabench source for /opt/arenabench"
+TAR_GZ="$TMP/arenabench.tar.gz"
+tar -czf "$TAR_GZ" \
+    --exclude='.git' \
+    --exclude='logs' \
+    --exclude='vm/images' \
+    --exclude='__pycache__' \
+    --exclude='.venv' \
+    --exclude='.codegraph' \
+    --exclude='.pytest_cache' \
+    --exclude='.ruff_cache' \
+    --exclude='node_modules' \
+    --exclude='*.egg-info' \
+    -C "$ROOT" .
+TAR_B64=$(base64 < "$TAR_GZ" | sed 's/^/      /')
+
 cat > "$TMP/user-data" <<EOF
 #cloud-config
 ssh_pwauth: false
@@ -58,9 +77,16 @@ users:
 package_update: true
 package_upgrade: false
 runcmd:
+  - mkdir -p /opt/arenabench
+  - tar -xzf /tmp/arenabench.tar.gz -C /opt/arenabench
   - bash /var/lib/cloud/scripts/customize.sh
   - shutdown -h +1
 write_files:
+  - path: /tmp/arenabench.tar.gz
+    encoding: base64
+    permissions: '0600'
+    content: |
+${TAR_B64}
   - path: /var/lib/cloud/scripts/customize.sh
     permissions: '0755'
     content: |

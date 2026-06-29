@@ -1,22 +1,23 @@
 import json
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
 import pytest
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from orchestrator.lifecycle import MatchOutcome
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA_PATH = REPO_ROOT / "orchestrator" / "schemas" / "summary.schema.json"
+MAX_AGENT_SLOT = 15  # plan §3: N ≤ 16 agents, slot ∈ [0, 15]
 
 
 class _SummaryShape(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     result: Literal["victory", "draw", "timeout", "error"]
-    winner: int | None
-    cause: str
+    winner: Annotated[int, Field(ge=0, le=15)] | None
+    cause: Annotated[str, Field(min_length=1)]
     final_state: Literal["DONE"]
 
 
@@ -74,3 +75,47 @@ def test_summary_shape_rejects_extra_keys() -> None:
                 "extra_field": "rejected",
             }
         )
+
+
+def test_summary_shape_rejects_winner_above_max() -> None:
+    """winner is capped at 15 (matches summary.schema.json + plan §3 max 16 agents)."""
+    with pytest.raises(ValidationError):
+        _SummaryShape.model_validate(
+            {
+                "result": "victory",
+                "winner": MAX_AGENT_SLOT + 1,
+                "cause": "x",
+                "final_state": "DONE",
+            }
+        )
+
+
+def test_summary_shape_rejects_winner_below_zero() -> None:
+    with pytest.raises(ValidationError):
+        _SummaryShape.model_validate(
+            {"result": "victory", "winner": -1, "cause": "x", "final_state": "DONE"}
+        )
+
+
+def test_summary_shape_rejects_empty_cause() -> None:
+    """cause must have minLength 1 per summary.schema.json (always meaningful)."""
+    with pytest.raises(ValidationError):
+        _SummaryShape.model_validate(
+            {"result": "victory", "winner": 0, "cause": "", "final_state": "DONE"}
+        )
+
+
+def test_schema_file_constraints_match_pydantic_mirror() -> None:
+    """Drift guard: schema file's winner.maximum + cause.minLength must mirror this test's
+    _SummaryShape constraints exactly.
+    """
+    raw = SCHEMA_PATH.read_text(encoding="utf-8")
+    schema = cast(dict[str, object], json.loads(raw))
+    props = cast(dict[str, object], schema["properties"])
+    winner = cast(dict[str, object], props["winner"])
+    any_of = cast(list[dict[str, object]], winner["anyOf"])
+    int_branch = next(b for b in any_of if b.get("type") == "integer")
+    assert int_branch["minimum"] == 0
+    assert int_branch["maximum"] == MAX_AGENT_SLOT
+    cause = cast(dict[str, object], props["cause"])
+    assert cause["minLength"] == 1

@@ -19,6 +19,7 @@ class SshConfig:
     key_path: Path | None = None
     connect_timeout_s: float = 10.0
     keepalive_interval_s: float = 30.0
+    remote_command: tuple[str, ...] | None = None
 
 
 class SshTransport:
@@ -103,6 +104,15 @@ class SshTransport:
 
     def _argv(self) -> list[str]:
         key_arg = [] if self._cfg.key_path is None else ["-i", str(self._cfg.key_path)]
+        if self._cfg.remote_command is None:
+            command: list[str] = [
+                "python3",
+                "-m",
+                "harness",
+                f"/home/{self._cfg.user}/config.json",
+            ]
+        else:
+            command = list(self._cfg.remote_command)
         return [
             "ssh",
             "-p",
@@ -117,10 +127,7 @@ class SshTransport:
             "-o",
             "UserKnownHostsFile=/dev/null",
             f"{self._cfg.user}@{self._cfg.host}",
-            "python3",
-            "-m",
-            "harness",
-            f"/home/{self._cfg.user}/config.json",
+            *command,
         ]
 
     def _fill_until_line(

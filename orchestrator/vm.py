@@ -31,6 +31,7 @@ class QemuConfig:
     edk2_code: Path | None = None
     edk2_vars: Path | None = None
     console_log: Path | None = None
+    host_ssh_port: int | None = None
 
 
 class QemuVm:
@@ -106,12 +107,17 @@ class QemuVm:
                 "-device",
                 f"vhost-vsock-pci,guest-cid={self._cfg.cid}",
                 "-netdev",
-                "user,id=net0",
+                self._netdev_arg(),
                 "-device",
                 "virtio-net-pci,netdev=net0",
             ]
         )
         return argv
+
+    def _netdev_arg(self) -> str:
+        if self._cfg.host_ssh_port is None:
+            return "user,id=net0"
+        return f"user,id=net0,hostfwd=tcp::{self._cfg.host_ssh_port}-:22"
 
     def start(self) -> None:
         if self.is_running():

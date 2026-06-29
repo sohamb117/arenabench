@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import Annotated, Literal, TextIO
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from common.errors import LifecycleError
 from common.ids import AgentSlot, MatchId, make_agent_slot
@@ -11,6 +13,22 @@ from common.protocol import Envelope, serialize_envelope
 
 _AGENT_WIDTH = 2
 _EMPTY = ""
+
+
+class _SummaryShape(BaseModel):
+    """Mirror of orchestrator/schemas/summary.schema.json for runtime guard.
+
+    Validates the dict passed to MatchLogger.write_summary so callers cannot
+    write a summary.json that violates the on-disk contract. Constraints
+    must mirror summary.schema.json exactly; drift is asserted by
+    tests/unit/test_summary_schema.py.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    result: Literal["victory", "draw", "timeout", "error"]
+    winner: Annotated[int, Field(ge=0, le=15)] | None
+    cause: Annotated[str, Field(min_length=1)]
+    final_state: Literal["DONE"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +105,7 @@ class MatchLogger:
         handle.write(f"{serialize_envelope(env)}\n")
 
     def write_summary(self, summary: dict[str, object]) -> None:
+        _SummaryShape.model_validate(summary)
         summary_path = self._match_dir / "summary.json"
         summary_json = json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False)
         summary_path.write_text(summary_json, encoding="utf-8")
