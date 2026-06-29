@@ -10,77 +10,209 @@ You have direct bash access as a non-root user. No tools, no rules, no hints.
 Discover everything yourself. Stay alive.
 ```
 
-This prompt is intentionally devoid of rules, tool listings, and opponent details. The experiment measures emergent capability without human-guided heuristics. The source of truth lives at `configs/prompts/adversarial.txt`. This quote is provided for reading convenience.
+This prompt is intentionally devoid of rules, tool listings, and opponent details. The experiment measures emergent capability without human-guided heuristics. The source of truth lives at [`configs/prompts/adversarial.txt`](configs/prompts/adversarial.txt). This quote is provided for reading convenience.
 
 ## Status
 
-Early development. Architecture locked, implementation in progress.
+**v1 scaffolding complete.** Waves 0–7 of the build plan ([`.omo/plans/arenabench-build.md`](.omo/plans/arenabench-build.md)) have landed:
 
-## Architecture
+- 214 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
+- Oracle reviewer gates G1 (schemas), G2 (state machine + races), G3 (Terminus 2 fidelity) all cleared
+- 17 e2e tests gated behind `ARENABENCH_E2E=1` — exercise the real-VM scenarios S1, S5, S6, S8 once you build the golden image
+
+## Quickstart
+
+### Prerequisites
+
+| Component | Purpose | Install |
+|---|---|---|
+| Python ≥ 3.12 | Runtime | via `uv python install 3.12` |
+| [uv](https://docs.astral.sh/uv/) | Package manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| `tmux` | Persistent bash shell inside the harness | `brew install tmux` (macOS) |
+| `qemu-system-aarch64` + `qemu-img` + `cloud-localds` | Real-VM e2e only | `brew install qemu cdrtools` (macOS arm64) |
+| `ssh` | R2 fallback transport (vsock unavailable on Docker Desktop / colima) | preinstalled on macOS |
+
+LLM credentials are only required for e2e runs:
+
+```bash
+export ANTHROPIC_API_KEY=...   # used by configs/agents/claude-sonnet.json
+export OPENAI_API_KEY=...      # used by configs/agents/gpt-4o.json
+```
+
+### Install + test
+
+```bash
+git clone <this repo>
+cd arenabench
+./scripts/dev-setup.sh    # uv sync --all-groups
+./scripts/lint.sh         # ruff + ruff format --check + basedpyright (strict)
+./scripts/test.sh         # pytest -m "not e2e"   → 214 passed
+```
+
+### CLI
+
+The `arenabench` console script has four subcommands:
+
+```bash
+uv run arenabench --help
+uv run arenabench validate configs/matches/demo-1v1.json
+# → OK match_id=demo-1v1 n_agents=2 network_policy=allowlist
+
+uv run arenabench replay logs/matches/<match-id>/   # pretty-prints summary.json
+uv run arenabench run configs/matches/demo-1v1.json  # → exit 2 (wiring landed in W6, real-VM glue TODO)
+uv run arenabench build-vm                            # → exit 2 (invoke vm/golden/build.sh directly for now)
+```
+
+### Build the golden VM image
+
+The immutable Debian 12 base image is built once and reused per-match (overlays in `vm/images/`).
+
+```bash
+# Apple Silicon (default)
+./vm/golden/build.sh
+
+# Intel/AMD
+ARENABENCH_ARCH=amd64 ./vm/golden/build.sh
+
+# Different point release (e.g. when re-pinning for new CVE fixes)
+ARENABENCH_DEBIAN_RELEASE=12.7.0 ./vm/golden/build.sh
+```
+
+The pipeline downloads the Debian generic-cloud image, runs `customize.sh` once inside it (installs `python3`, `uv`, `tmux`, `iptables`, the harness, the [iptables allowlist](vm/golden/allowlist-iptables.sh), and the guest-probe), then finalizes the qcow2 + writes `vm/images/MANIFEST.json` with SHA256 + customization manifest. Takes 5–30 min depending on host (slower on Apple Silicon TCG fallback per plan R1).
+
+Track the pinned point release and CVE state in [`vm/CVES.md`](vm/CVES.md).
+
+### Run the e2e tests
+
+```bash
+ARENABENCH_E2E=1 ./scripts/test-e2e.sh
+```
+
+The e2e suite exercises the binary observables from plan §9:
+
+- [`test_demo_1v1_produces_victory`](tests/e2e/test_match_real_vm.py) — S1 + §14.1: `summary.json.result == "victory"`
+- [`test_demo_4ffa_n4_free_for_all`](tests/e2e/test_match_real_vm.py) — S6 + §14.5: 4 agent dirs `00..03/` exist
+- [`test_log_completeness`](tests/e2e/test_match_real_vm.py) — S5 + §14.4: every JSONL parses, every expected file present
+- [`test_match_b_does_not_see_match_a_marker`](tests/e2e/test_vm_disposability.py) — S8 + §14.6: VM disposability
+
+## Log layout (per plan §8)
 
 ```
-host (macOS)
-└── docker (linux runtime)
-    ├── orchestrator/        host-side controller
-    │   ├── lifecycle: boots QEMU, provisions users, starts N harnesses, declares winner
-    │   ├── transport: virtio-vsock JSONL protocol
-    │   ├── logging: per-harness stdout + API JSONL + bash JSONL
-    │   └── liveness: dual signal (stdout silence AND `kill -0 <pid>` failure)
-    └── qemu vm (debian 12 generic-cloud)
-        ├── harness@user1   ──┐
-        ├── harness@user2     │  N non-root users, one per LLM agent
-        ├── ...              │  Each harness: Python + LiteLLM,
-        └── harness@userN   ──┘  raw-bash action loop, persistent context
+logs/matches/<match_id>/
+  summary.json              # final outcome (result, winner, cause)
+  match.jsonl               # cross-cutting: orchestrator events, guest-probe frames, terminal match_terminated
+  orchestrator.log          # structured log via common.log
+  agents/
+    00/
+      events.jsonl          # harness_exit, turn_summary
+      bash.jsonl             # pid_announce, bash_request, bash_result
+      api.jsonl              # llm_request, llm_response, heartbeat_injected
+      context.jsonl          # chat dumps (reserved for harness post-mortem)
+    01/ 02/ ...              # one per agent slot (zero-padded width-2)
 ```
 
-## Components
+## Configs
 
-### `harness/` — the per-agent runtime (forked from Terminus 2)
-
-- Sits as a process owned by a single non-root Linux user.
-- Builds the LLM prompt from: system prompt + summary of previous actions + previous bash returns + previous bash executions.
-- Calls LiteLLM for inference (provider-agnostic via `model` string).
-- Parses the model's raw bash output (no tool-calling) and executes it directly.
-- Receives heartbeat injections from the orchestrator when idle.
-- Persists context to disk between turns.
-- Configured by `config.json` (system prompt, temperature, API key, model type, …).
-
-### `orchestrator/` — host-side referee
-
-- Boots a fresh disposable QEMU VM per match.
-- Provisions N users at boot.
-- Starts N harnesses with models declared in a JSON match file.
-- Multiplexes per-harness virtio-vsock streams.
-- Logs all stdouts, API calls/responses, and bash executions.
-- Polls guest PID liveness, applies grace windows, declares the winner.
-
-### `vm/` — guest image build + cloud-init seed
-
-- Debian 12 generic-cloud base + minimal package set + Python harness payload.
-- cloud-init `user-data` provisions N users at first boot.
-
-### `configs/` — match definitions
+Match definitions live in [`configs/matches/`](configs/matches/) and reference per-agent configs in [`configs/agents/`](configs/agents/):
 
 ```json
+// configs/matches/demo-1v1.json
 {
   "match_id": "demo-1v1",
   "n_agents": 2,
   "heartbeat_interval_s": 120,
   "grace_period_s": 30,
   "max_duration_s": 1800,
+  "archive_grace_s": 60,
+  "network_policy": "allowlist",
+  "cgroup_limits": null,
   "agents": [
-    { "user": "agent1", "config": "configs/agents/gpt4o.json" },
-    { "user": "agent2", "config": "configs/agents/claude35.json" }
+    { "slot": 0, "user": "agent0", "config": "configs/agents/claude-sonnet.json" },
+    { "slot": 1, "user": "agent1", "config": "configs/agents/gpt-4o.json" }
   ]
 }
 ```
 
+The full schema lives in [`orchestrator/match_config.py`](orchestrator/match_config.py); the brand/validator contract is enforced by `MatchConfig` (Pydantic v2, `extra="forbid"`).
+
+## Architecture
+
+```
+host (macOS / Linux)
+└── docker (colima or Docker Desktop)
+    ├── orchestrator/           host-side controller
+    │   ├── lifecycle.py        state machine (IDLE → VM_BOOTING → PROVISIONING → HARNESSES_UP → IN_MATCH → WINNER_GRACE → ARCHIVING → DONE)
+    │   ├── vm.py               QEMU subprocess + qcow2 overlay management
+    │   ├── vsock_server.py     selectors-based per-port stream demux
+    │   ├── liveness.py         dual-signal alive computation (vsock-open AND kill0 AND no-silence)
+    │   ├── winner.py           first-only-one + grace + draw/timeout resolver
+    │   ├── logger.py           per-match JSONL + summary.json sink
+    │   ├── cloudinit.py        Jinja2 user-data renderer + cloud-localds seed-iso
+    │   └── cli.py              typer entry: run | replay | validate | build-vm
+    └── qemu vm (debian 12 generic-cloud)
+        ├── guest_probe.py      vsock 9999 daemon: kill0 / proc_list / boot_ack
+        └── harness@agent0..N   one process per LLM agent:
+                                  loop.py | chat.py | parser.py | shell.py | llm.py | heartbeat.py
+                                  transport_vsock.py (or transport_ssh.py R2 fallback)
+```
+
+## Components
+
+### `harness/` — the per-agent runtime (forked from Terminus 2 @ `1a6ffa9`, Apache-2.0)
+
+- [`loop.py`](harness/loop.py) — main run loop, wires all per-agent modules
+- [`chat.py`](harness/chat.py) — alternating-role history with token-counted trim/summarize
+- [`parser.py`](harness/parser.py) — `{analysis, plan, commands, task_complete}` JSON + XML parser
+- [`shell.py`](harness/shell.py) — tmux-backed persistent bash with 10 KB head+tail truncation
+- [`llm.py`](harness/llm.py) — LiteLLM wrapper with usage + cost capture
+- [`heartbeat.py`](harness/heartbeat.py) — `[HEARTBEAT t=...]` user-turn injection
+- [`transport.py`](harness/transport.py) + [`transport_fake.py`](harness/transport_fake.py) + [`transport_ssh.py`](harness/transport_ssh.py)
+
+### `orchestrator/` — host-side referee
+
+- Detailed in the architecture tree above. See each module's docstring.
+
+### `vm/` — guest image build + daemons
+
+- [`golden/build.sh`](vm/golden/build.sh) + [`customize.sh`](vm/golden/customize.sh) — one-time golden image build
+- [`golden/allowlist-iptables.sh`](vm/golden/allowlist-iptables.sh) — baked outbound rules (`network_policy: "allowlist"`)
+- [`cloud-init/user-data.j2`](vm/cloud-init/user-data.j2) — per-match cloud-init template
+- [`guest_probe.py`](vm/guest_probe.py) — root daemon on vsock 9999 answering `kill0` / `proc_list` / `boot_ack`
+- [`CVES.md`](vm/CVES.md) — pinned Debian point-release CVE inventory
+
+### `common/` — shared types
+
+- [`protocol.py`](common/protocol.py) — Pydantic v2 envelope + 19-frame discriminated union (16 transport frames + 3 lifecycle: `harness_dead`, `match_state_change`, `match_terminated`)
+- [`ids.py`](common/ids.py) — `MatchId`, `AgentSlot`, `RequestId`, `Pid` branded types
+- [`errors.py`](common/errors.py) — `ArenaError` + `Transport/Parse/Lifecycle/Config` subclasses
+- [`log.py`](common/log.py) — structlog JSONL sink + global configuration
+- [`clock.py`](common/clock.py) — UTC + monotonic helpers
+
+## Plan + scenarios
+
+The build plan, locked architectural decisions, and 18 binary-observable scenarios live in [`.omo/plans/arenabench-build.md`](.omo/plans/arenabench-build.md). Key references:
+
+- §3 — 24 locked decisions (architecture + game mechanics)
+- §6 — vsock JSONL protocol spec
+- §7 — match lifecycle state machine
+- §9 — scenarios S1–S18 with binary pass conditions
+- §12 — risk register (R1–R15)
+- §14 — exit criteria (10 binary requirements for v1)
+
 ## Glossary
 
-- **Heartbeat**: orchestrator-driven periodic "continue, the match is still live" message injected into the LLM's prompt context by the harness. Fixed 120s default. Carries no opponent intel — the model must discover everything itself.
+- **Heartbeat**: orchestrator-driven periodic `"[HEARTBEAT t=… turn=…] continue, the match is still live."` user-turn injected by the harness when the chat is in assistant-last state. Default cadence 120s. Carries no opponent intel.
 - **Match**: one boot-to-winner cycle inside a single disposable VM.
 - **Harness**: one Python process per LLM agent, owning that agent's bash session, prompt assembly, and inference.
+- **Golden image**: the immutable Debian qcow2 produced by `vm/golden/build.sh`. Each match runs from a per-match qcow2 overlay over this base.
+- **Dual signal**: alive ⇔ vsock-open AND kill0-not-explicit-dead AND no-silence-timeout. Kill0-stale alone is NOT death (probe missed window, but frames may still flow); requires silence corroboration.
 
-## Development
+## Known gaps for full v1
 
-(TODO once tooling is bootstrapped.)
+- `arenabench run` CLI subcommand currently exits 2 ("not yet wired"). The orchestrator/lifecycle.py `run_match` is fully tested via fakes; wiring it to QEMU spawn + real transport + summary write is the next concrete step.
+- vsock is unavailable on macOS Docker Desktop and colima per R2; the orchestrator + harness ship both `transport_vsock.py` and `transport_ssh.py`. Auto-selecting between them at boot is wired through `scripts/probe-vsock.sh` and `docker-compose.vsock.yml`; the harness invocation path needs the final glue.
+- `vm/CVES.md` is a placeholder; populate via the snapshot procedure documented in the file when re-pinning.
+
+## License
+
+MIT — see [`pyproject.toml`](pyproject.toml). The harness modules adapted from terminal-bench Terminus 2 are clearly attributed in their respective file headers (Apache-2.0 upstream).
