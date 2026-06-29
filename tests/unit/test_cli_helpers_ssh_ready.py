@@ -117,3 +117,38 @@ def test_wait_for_ssh_ready_raises_timeout_when_probe_keeps_failing(
             agents=_agents(1),
             deadline_s=0.01,
         )
+
+
+def test_wait_for_ssh_ready_treats_subprocess_timeout_as_retryable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Round-14 lock: `subprocess.TimeoutExpired` from a slow cloud-init must
+    be retried until `deadline_s`, not propagated. cloud-init can legitimately
+    take longer than the per-probe timeout while still finishing before the
+    overall deadline.
+    """
+    calls = {"n": 0}
+
+    def fake_run(
+        argv: list[str], *, capture_output: bool, text: bool, timeout: float, check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        _ = capture_output
+        _ = text
+        _ = check
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("orchestrator._cli_helpers.subprocess.run", fake_run)
+    monkeypatch.setattr("orchestrator._cli_helpers.time.sleep", _noop_sleep)
+
+    wait_for_ssh_ready(
+        host="127.0.0.1",
+        port=22222,
+        key_path=tmp_path / "ssh_key",
+        agents=_agents(1),
+        deadline_s=30.0,
+    )
+
+    assert calls["n"] == EXPECTED_RETRY_CALLS

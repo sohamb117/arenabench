@@ -160,7 +160,15 @@ def wait_for_ssh_ready(
     deadline = time.monotonic() + deadline_s
     last_stderr = ""
     while time.monotonic() < deadline:
-        result = _ssh_ready_probe(host=host, port=port, key_path=key_path, agents=agents)
+        try:
+            result = _ssh_ready_probe(host=host, port=port, key_path=key_path, agents=agents)
+        except subprocess.TimeoutExpired as exc:
+            last_stderr = (
+                f"ssh probe exceeded {_SSH_READY_PROBE_TIMEOUT_S}s "
+                f"(cloud-init likely still running): {exc}"
+            )
+            time.sleep(_SSH_READY_POLL_INTERVAL_S)
+            continue
         if result.returncode == 0:
             return
         last_stderr = result.stderr or result.stdout
