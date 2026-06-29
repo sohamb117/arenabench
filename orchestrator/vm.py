@@ -181,7 +181,7 @@ class QemuVm:
     def _machine_arg(self, accel: Literal["hvf", "tcg"]) -> str:
         if self._cfg.arch == "aarch64":
             return f"virt,accel={accel}"
-        return f"pc,accel={accel}"
+        return f"q35,accel={accel}"
 
     def _cpu_arg(self, accel: Literal["hvf", "tcg"]) -> str:
         if self._cfg.arch == "x86_64" and accel == "tcg":

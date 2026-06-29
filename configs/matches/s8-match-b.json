@@ -1,0 +1,14 @@
+{
+  "match_id": "s8-match-b",
+  "n_agents": 2,
+  "heartbeat_interval_s": 30,
+  "grace_period_s": 30,
+  "max_duration_s": 60,
+  "archive_grace_s": 10,
+  "network_policy": "allowlist",
+  "cgroup_limits": null,
+  "agents": [
+    { "slot": 0, "user": "agent0", "config": "configs/agents/claude-sonnet.json" },
+    { "slot": 1, "user": "agent1", "config": "configs/agents/gpt-4o.json" }
+  ]
+}

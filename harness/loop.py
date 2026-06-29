@@ -144,10 +144,17 @@ _LAST_USER_EXCERPT_MAX = 512
 
 
 def _last_user_excerpt(messages: list[dict[str, str]]) -> str:
+    """Return the bounded TAIL of the last user-role message.
+
+    Tail (not head) so an appended `[HEARTBEAT t=...]` suffix on a long
+    terminal-output user turn is still observable in `api.jsonl` — plan §9 S4
+    binary observable cannot rely on the heartbeat landing in the first 512
+    chars.
+    """
     for message in reversed(messages):
         if message.get("role") == "user":
             content = message.get("content", "")
-            return content[:_LAST_USER_EXCERPT_MAX]
+            return content[-_LAST_USER_EXCERPT_MAX:]
     return ""
 
 

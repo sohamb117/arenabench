@@ -37,12 +37,14 @@ app = typer.Typer(
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_GOLDEN = _REPO_ROOT / "vm" / "images" / "arenabench-golden-aarch64.qcow2"
+_VM_IMAGES_DIR = _REPO_ROOT / "vm" / "images"
+_DEFAULT_GOLDEN = _VM_IMAGES_DIR / "arenabench-golden-aarch64.qcow2"
 _DEFAULT_LOG_ROOT = _REPO_ROOT / "logs"
 _SSH_READY_TIMEOUT_S = 120.0
 _SSH_HOST_PORT = 22222
 _EXIT_CONFIG_ERROR = 1
 _EXIT_RUNTIME_ERROR = 3
+_ARCH_TO_IMAGE_SUFFIX: dict[str, str] = {"aarch64": "aarch64", "x86_64": "amd64"}
 
 
 @app.command(name="validate")
@@ -81,13 +83,16 @@ def run_match_command(
 ) -> None:
     """Run a match end-to-end. Requires a built golden image + LLM credentials.
 
-    arch must be 'aarch64' or 'x86_64'. The default 'aarch64' golden image
-    path lives at vm/images/arenabench-golden-aarch64.qcow2; override
-    --golden-image when running x86_64.
+    arch must be 'aarch64' or 'x86_64'. When --golden-image is left at the
+    default and --arch is x86_64, the default is rewritten to the amd64
+    golden so users do not need to pass --golden-image alongside --arch.
     """
-    if arch not in {"aarch64", "x86_64"}:
+    if arch not in _ARCH_TO_IMAGE_SUFFIX:
         typer.echo(f"ERROR --arch must be 'aarch64' or 'x86_64', got {arch!r}", err=True)
         raise typer.Exit(code=_EXIT_CONFIG_ERROR)
+    if golden_image == _DEFAULT_GOLDEN and arch != "aarch64":
+        suffix = _ARCH_TO_IMAGE_SUFFIX[arch]
+        golden_image = _VM_IMAGES_DIR / f"arenabench-golden-{suffix}.qcow2"
     try:
         config = load_match_config(match_path)
     except ConfigError as exc:

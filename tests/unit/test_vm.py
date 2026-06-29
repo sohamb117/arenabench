@@ -88,7 +88,7 @@ def test_build_argv_constructs_x86_64_tcg_command(tmp_path: Path) -> None:
     argv = vm.build_argv()
 
     assert argv[0] == "qemu-system-x86_64"
-    assert argv[argv.index("-machine") + 1] == "pc,accel=tcg"
+    assert argv[argv.index("-machine") + 1] == "q35,accel=tcg"
     assert argv[argv.index("-cpu") + 1] == "max"
     assert not any("pflash" in token for token in argv)
 

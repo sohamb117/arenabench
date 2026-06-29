@@ -49,14 +49,14 @@ fi
 if [[ -f "$ARENABENCH_PKG_DIR/vm/guest_probe.py" ]]; then
     install -m 0755 "$ARENABENCH_PKG_DIR/vm/guest_probe.py" \
         /usr/local/sbin/arenabench-guest-probe
-    cat > /etc/systemd/system/arenabench-guest-probe.service <<'UNIT'
+    cat > /etc/systemd/system/arenabench-guest-probe.service <<UNIT
 [Unit]
 Description=arenabench guest-probe daemon
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /usr/local/sbin/arenabench-guest-probe
+ExecStart=$ARENABENCH_VENV/bin/python3 /usr/local/sbin/arenabench-guest-probe
 Restart=on-failure
 User=root
 

@@ -121,12 +121,24 @@ elif "$QEMU_BIN" -accel help 2>/dev/null | grep -q '^kvm$'; then
 else
     ACCEL="tcg"
 fi
-echo "    qemu binary: $QEMU_BIN  machine: $MACHINE_TYPE  accel: $ACCEL"
-"$QEMU_BIN" -machine "$MACHINE_TYPE,accel=$ACCEL" -cpu host -smp 2 -m 2048 -nographic \
-    -drive if=none,file="$GOLDEN_PATH.tmp",format=qcow2,id=disk0 -device virtio-blk-pci,drive=disk0 \
-    -drive if=none,file="$TMP/seed.iso",format=raw,media=cdrom,id=seed0 -device scsi-cd,drive=seed0 \
-    -device virtio-scsi-pci \
-    -netdev user,id=net0 -device virtio-net-pci,netdev=net0 || true
+# `-cpu host` requires HVF or KVM passthrough; mirror orchestrator/vm.py:_cpu_arg
+# so the amd64 TCG path uses `max` instead of failing with "host unavailable".
+if [[ "$ARCH" == "amd64" && "$ACCEL" == "tcg" ]]; then
+    CPU_ARG="max"
+else
+    CPU_ARG="host"
+fi
+echo "    qemu binary: $QEMU_BIN  machine: $MACHINE_TYPE  accel: $ACCEL  cpu: $CPU_ARG"
+if ! timeout 1800 "$QEMU_BIN" -machine "$MACHINE_TYPE,accel=$ACCEL" -cpu "$CPU_ARG" \
+        -smp 2 -m 2048 -nographic \
+        -drive if=none,file="$GOLDEN_PATH.tmp",format=qcow2,id=disk0 -device virtio-blk-pci,drive=disk0 \
+        -drive if=none,file="$TMP/seed.iso",format=raw,media=cdrom,id=seed0 -device scsi-cd,drive=seed0 \
+        -device virtio-scsi-pci \
+        -netdev user,id=net0 -device virtio-net-pci,netdev=net0; then
+    echo "ERROR: QEMU customization boot failed or exceeded 1800s timeout" >&2
+    rm -f "$GOLDEN_PATH.tmp"
+    exit 1
+fi
 
 echo ">>> finalizing golden image"
 mv "$GOLDEN_PATH.tmp" "$GOLDEN_PATH"
