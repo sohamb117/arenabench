@@ -116,7 +116,8 @@ def call(
     # disabled — our outer loop is the SOLE retry mechanism, and every attempt
     # fires on_attempt() so api.jsonl gets one llm_request frame per attempt.
     # LiteLLM-internal retries would collapse N attempts into one observable.
-    for attempt in range(max(1, num_retries)):
+    total_attempts = num_retries + 1
+    for attempt in range(total_attempts):
         if on_attempt is not None:
             on_attempt(attempt)
         try:

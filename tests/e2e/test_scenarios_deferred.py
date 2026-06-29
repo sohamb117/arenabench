@@ -113,11 +113,12 @@ def test_s16_llm_429_retry_observable_in_api_jsonl(tmp_path: Path) -> None:
     _ = tmp_path
     _skip_if_no_e2e()
     pytest.skip(
-        "S16 retry observable requires the LLM retry loop to emit one "
-        "llm_request envelope per attempt (currently the retry is internal "
-        "to harness.llm.call so only the final attempt is logged). Move "
-        "the retry loop into harness.loop._llm_turn, or add an on_attempt "
-        "callback to llm.call."
+        "S16 retry observable is unit-tested in tests/unit/test_llm_on_attempt.py "
+        "(attempts==[0,1] for num_retries=1 on 429-then-success). The real-VM "
+        "binary observable requires a deterministic fake-LLM agent config + "
+        "match config that injects a 429 on the first turn — add "
+        "configs/agents/fake-429-then-success.json + "
+        "configs/matches/s16-retry.json + an api.jsonl frame-count assertion."
     )
 
 
