@@ -34,30 +34,32 @@ def _silence_violation(
 def is_alive(state: AgentLivenessState, now_monotonic: float, th: LivenessThresholds) -> bool:
     """Dual-signal liveness per plan §3.A4 and §7.
 
-    - vsock_connected=False is always fatal (explicit disconnect).
-    - kill0_alive=False (explicit dead response) is fatal.
-    - silence_timeout is fatal on its own.
-    - kill0_stale ALONE is not fatal (probe didn't respond in time, but
-      frames are still flowing); only when paired with silence does it
-      become a corroborated death. Avoids a transient 5s guest-probe
-      stall killing an otherwise-live agent.
+    §3.A4: stdout-silence AND `kill -0` failure are BOTH required for death.
+    - vsock_connected=False is fatal alone (explicit close — distinct from
+      silence; the R2 SSH transport drop must be detectable instantly).
+    - kill0_alive=False is fatal alone (explicit dead-process signal).
+    - silence_timeout alone is NOT fatal (quiet but-running agent); it is
+      fatal only when corroborated by kill0_stale (probe also stopped
+      responding within kill0_max_age_s).
     """
     if not state.vsock_connected:
         return False
     if not state.kill0_alive:
         return False
-    return not _silence_violation(state, now_monotonic, th)
+    silence = _silence_violation(state, now_monotonic, th)
+    kill0_stale = (now_monotonic - state.kill0_ts_monotonic) > th.kill0_max_age_s
+    return not (silence and kill0_stale)
 
 
 def cause_of_death(state: AgentLivenessState, now_monotonic: float, th: LivenessThresholds) -> str:
     """Combined-signal cause string. Returns '+'-joined list of failing signals.
 
     Possible single tokens (joined with '+'):
-      'vsock_disconnect'   — explicit close
-      'kill0_dead'         — kill0 probe returned alive=false
-      'silence_timeout'    — no frames within silence_threshold_s
-      'kill0_stale_and_silence' — corroborated dual failure (probe stale AND silent)
-      'alive'              — agent is alive
+      'vsock_disconnect'        — explicit close
+      'kill0_dead'              — kill0 probe returned alive=false
+      'kill0_stale_and_silence' — corroborated dual failure (§3.A4): probe
+                                  stale AND no frames within silence threshold
+      'alive'                   — agent is alive
 
     Plan §9 S11 binary observable expects the combined form
     'vsock_disconnect+kill0_dead' when both signals fail at once.
@@ -78,8 +80,5 @@ def cause_of_death(state: AgentLivenessState, now_monotonic: float, th: Liveness
 
     if silence and kill0_stale:
         return "kill0_stale_and_silence"
-
-    if silence:
-        return "silence_timeout"
 
     return "alive"

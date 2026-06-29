@@ -90,6 +90,8 @@ class QemuVm:
                 f"if=none,file={self._overlay},format=qcow2,id=disk0",
                 "-device",
                 "virtio-blk-pci,drive=disk0",
+                "-device",
+                "virtio-scsi-pci,id=scsi0",
             ]
         )
         if self._cfg.seed_iso is not None:
@@ -98,15 +100,9 @@ class QemuVm:
                     "-drive",
                     f"if=none,file={self._cfg.seed_iso},format=raw,media=cdrom,id=seed0",
                     "-device",
-                    "scsi-cd,drive=seed0",
+                    "scsi-cd,bus=scsi0.0,drive=seed0",
                 ]
             )
-        argv.extend(
-            [
-                "-device",
-                "virtio-scsi-pci",
-            ]
-        )
         if self._cfg.enable_vsock:
             argv.extend(
                 [

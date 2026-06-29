@@ -53,10 +53,14 @@ def test_dead_kill0_dead() -> None:
     assert cause_of_death(state, NOW, TH) == "kill0_dead"
 
 
-def test_dead_silence_timeout() -> None:
+def test_alive_silence_alone_with_kill0_fresh() -> None:
+    """Plan §3.A4: silence alone is NOT fatal — death requires BOTH stdout-silence
+    AND kill-0 failure. A quiet but running process (kill0 still answering)
+    must stay alive.
+    """
     state = make_state(last_frame_ts_monotonic=NOW - STALE_OFFSET_SILENCE)
-    assert is_alive(state, NOW, TH) is False
-    assert cause_of_death(state, NOW, TH) == "silence_timeout"
+    assert is_alive(state, NOW, TH) is True
+    assert cause_of_death(state, NOW, TH) == "alive"
 
 
 def test_alive_llm_in_flight() -> None:
@@ -68,13 +72,16 @@ def test_alive_llm_in_flight() -> None:
     assert cause_of_death(state, NOW, TH) == "alive"
 
 
-def test_dead_llm_max_exceeded() -> None:
+def test_alive_llm_max_exceeded_with_kill0_fresh() -> None:
+    """Plan §3.A4: even after llm_max_s, silence alone is not fatal when kill0
+    is still answering. Combined kill0-stale + silence is what corroborates death.
+    """
     state = make_state(
         last_frame_ts_monotonic=NOW - STALE_OFFSET_SILENCE - LLM_IN_FLIGHT_OFFSET,
         llm_call_start_ts_monotonic=NOW - STALE_OFFSET_LLM_MAX,
     )
-    assert is_alive(state, NOW, TH) is False
-    assert cause_of_death(state, NOW, TH) == "silence_timeout"
+    assert is_alive(state, NOW, TH) is True
+    assert cause_of_death(state, NOW, TH) == "alive"
 
 
 def test_kill0_stale_alone_is_alive_no_silence() -> None:
@@ -108,7 +115,8 @@ def test_dead_vsock_kill0_and_silence_combined() -> None:
     assert cause_of_death(state, NOW, TH) == "vsock_disconnect+kill0_dead+silence_timeout"
 
 
-def test_never_seen_frame_is_silent() -> None:
+def test_alive_never_seen_frame_with_kill0_fresh() -> None:
+    """Plan §3.A4: even a never-seen-a-frame agent stays alive while kill0 answers."""
     state = make_state(last_frame_ts_monotonic=0.0)
-    assert is_alive(state, NOW, TH) is False
-    assert cause_of_death(state, NOW, TH) == "silence_timeout"
+    assert is_alive(state, NOW, TH) is True
+    assert cause_of_death(state, NOW, TH) == "alive"

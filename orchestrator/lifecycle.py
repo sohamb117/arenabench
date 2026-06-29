@@ -1,6 +1,6 @@
 import time
 from datetime import UTC, datetime
-from typing import Literal, cast
+from typing import cast
 
 from common.protocol import (
     BootAck,
@@ -15,7 +15,12 @@ from common.protocol import (
     PidAnnounce,
 )
 from orchestrator import heartbeat_scheduler, liveness, winner
-from orchestrator._lifecycle_state import AgentState, MatchContext, MatchOutcome
+from orchestrator._lifecycle_state import (
+    AgentState,
+    MatchContext,
+    MatchOutcome,
+    build_outcome,
+)
 
 __all__ = ["MatchContext", "MatchOutcome", "run_match"]
 
@@ -28,12 +33,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         nonlocal seq
         seq += 1
         return Envelope(
-            ts=datetime.now(UTC),
-            seq=seq,
-            src="orchestrator",
-            dst=dst,
-            kind=kind,
-            data=data,
+            ts=datetime.now(UTC), seq=seq, src="orchestrator", dst=dst, kind=kind, data=data
         )
 
     def transition(new_state: str, reason: str) -> None:
@@ -41,7 +41,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         env = mk_env(
             "match_state_change",
             MatchStateChange(from_state=state_name, to_state=new_state, reason=reason),
-            dst="broadcast",
+            "broadcast",
         )
         ctx.logger.write_envelope(env)
         state_name = new_state
@@ -54,23 +54,17 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         alive_at_timeout: list[int] | None = None,
         total_duration_s: float | None = None,
     ) -> MatchOutcome:
-        res_lit = cast(Literal["victory", "draw", "timeout", "error"], result)
-        out = MatchOutcome(
-            result=res_lit,
-            winner=winner_slot,
-            cause=cause,
-            final_state="DONE",
+        out = build_outcome(
+            result,
+            winner_slot,
+            cause,
             alive_at_timeout=alive_at_timeout,
             total_duration_s=total_duration_s,
         )
         ctx.logger.write_summary(out.model_dump())
         transition("DONE", cause)
-        term = mk_env(
-            "match_terminated",
-            MatchTerminated(result=res_lit, winner=winner_slot, cause=cause),
-            dst="broadcast",
-        )
-        ctx.logger.write_envelope(term)
+        term_data = MatchTerminated(result=out.result, winner=winner_slot, cause=cause)
+        ctx.logger.write_envelope(mk_env("match_terminated", term_data, "broadcast"))
         ctx.logger.close()
         return out
 
@@ -213,13 +207,12 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
             ):
                 transition("ARCHIVING", "max_duration_exceeded")
                 time.sleep(ctx.match_config.archive_grace_s)
+                alive_now = sorted(s for s, st in agents.items() if not st.dead_emitted)
                 return finish(
                     "timeout",
                     None,
                     "max_duration_exceeded",
-                    alive_at_timeout=sorted(
-                        slot for slot, st in agents.items() if not st.dead_emitted
-                    ),
+                    alive_at_timeout=alive_now,
                     total_duration_s=ctx.clock() - match_start_ts,
                 )
             time.sleep(ctx.poll_interval_s)
@@ -242,13 +235,12 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
             transition("ARCHIVING", out.cause)
             time.sleep(ctx.match_config.archive_grace_s)
             if out.result == "timeout":
+                alive_now = sorted(s for s, st in agents.items() if not st.dead_emitted)
                 return finish(
                     out.result,
                     out.winner,
                     out.cause,
-                    alive_at_timeout=sorted(
-                        slot for slot, st in agents.items() if not st.dead_emitted
-                    ),
+                    alive_at_timeout=alive_now,
                     total_duration_s=ctx.clock() - match_start_ts,
                 )
             return finish(out.result, out.winner, out.cause)

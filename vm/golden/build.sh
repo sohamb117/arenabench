@@ -184,9 +184,9 @@ QEMU_ARGV=(
     "${PFLASH_ARGS[@]}"
     -drive "if=none,file=$GOLDEN_PATH.tmp,format=qcow2,id=disk0"
     -device "virtio-blk-pci,drive=disk0"
+    -device "virtio-scsi-pci,id=scsi0"
     -drive "if=none,file=$TMP/seed.iso,format=raw,media=cdrom,id=seed0"
-    -device "scsi-cd,drive=seed0"
-    -device "virtio-scsi-pci"
+    -device "scsi-cd,bus=scsi0.0,drive=seed0"
     -netdev "user,id=net0"
     -device "virtio-net-pci,netdev=net0"
 )

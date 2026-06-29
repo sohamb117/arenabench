@@ -61,6 +61,23 @@ def _cfg(tmp_path: Path, arch: _Arch = "aarch64") -> QemuConfig:
     )
 
 
+def test_build_argv_emits_scsi_controller_before_scsi_cd(tmp_path: Path) -> None:
+    """Round-10 lock: QEMU requires `-device virtio-scsi-pci,id=scsi0` BEFORE
+    `-device scsi-cd,bus=scsi0.0,drive=seed0`; otherwise the CD's parent bus
+    doesn't exist yet and the seed-iso never attaches.
+    """
+    cfg = _cfg(tmp_path)
+    argv = QemuVm(cfg).build_argv()
+
+    controller_idx = next(i for i, t in enumerate(argv) if t.startswith("virtio-scsi-pci"))
+    cd_idx = next(i for i, t in enumerate(argv) if t.startswith("scsi-cd"))
+    assert controller_idx < cd_idx, (
+        f"scsi-cd at {cd_idx} appears before virtio-scsi-pci at {controller_idx}"
+    )
+    assert "virtio-scsi-pci,id=scsi0" in argv
+    assert "scsi-cd,bus=scsi0.0,drive=seed0" in argv
+
+
 def test_build_argv_constructs_aarch64_hvf_command(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     vm = QemuVm(cfg)

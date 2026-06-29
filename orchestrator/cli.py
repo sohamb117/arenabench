@@ -144,7 +144,8 @@ def _drive_match(
     )
     seed_iso = overlay_dir / "seed.iso"
     write_seed_iso(user_data=user_data, out_path=seed_iso)
-    edk2_code, edk2_vars = detect_edk2_pflash() if arch == "aarch64" else (None, None)
+    edk2_code, edk2_vars_src = detect_edk2_pflash() if arch == "aarch64" else (None, None)
+    edk2_vars = _copy_pflash_vars(edk2_vars_src, overlay_dir) if edk2_vars_src else None
     qemu_cfg = QemuConfig(
         golden_image=golden_image,
         overlay_dir=overlay_dir,
@@ -197,6 +198,19 @@ def _wait_for_ssh(host: str, port: int, timeout_s: float) -> None:
         except OSError:
             time.sleep(1.0)
     raise TimeoutError(f"ssh on {host}:{port} not reachable within {timeout_s}s")
+
+
+def _copy_pflash_vars(src: Path, overlay_dir: Path) -> Path:
+    """Copy edk2 vars firmware to per-match overlay so QEMU can write to it.
+
+    The system-installed file is typically read-only (homebrew shared share/qemu/
+    or /usr/share/AAVMF/); QEMU needs a writable pflash backing file at boot.
+    Mirrors vm/golden/build.sh's `cp "$EDK2_VARS" "$TMP/edk2-vars.fd"`.
+    """
+    dst = overlay_dir / "edk2-vars.fd"
+    shutil.copy(src, dst)
+    dst.chmod(0o644)
+    return dst
 
 
 def main(argv: list[str] | None = None) -> int:

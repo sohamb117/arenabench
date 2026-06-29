@@ -29,6 +29,28 @@ class MatchOutcome(BaseModel):
     total_duration_s: Annotated[float, Field(ge=0.0)] | None = None
 
 
+def build_outcome(
+    result: str,
+    winner_slot: int | None,
+    cause: str,
+    *,
+    alive_at_timeout: list[int] | None = None,
+    total_duration_s: float | None = None,
+) -> MatchOutcome:
+    """Construct a validated MatchOutcome. Extracted so lifecycle.run_match
+    stays under the 250 LOC cap; the cast + multi-line kwargs live here.
+    """
+    res_lit = cast(Literal["victory", "draw", "timeout", "error"], result)
+    return MatchOutcome(
+        result=res_lit,
+        winner=winner_slot,
+        cause=cause,
+        final_state="DONE",
+        alive_at_timeout=alive_at_timeout,
+        total_duration_s=total_duration_s,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class MatchContext:
     match_config: MatchConfig
