@@ -47,10 +47,28 @@ def test_dead_vsock_disconnect() -> None:
     assert cause_of_death(state, NOW, TH) == "vsock_disconnect"
 
 
-def test_dead_kill0_dead() -> None:
+def test_alive_kill0_dead_alone_without_silence() -> None:
+    """Plan §3.A4 strict: kill0_alive=False alone (no silence corroboration)
+    is NOT fatal — the agent could be quiet but still running while a racy
+    probe reports dead. Death requires silence too.
+    """
     state = make_state(kill0_alive=False)
+    assert is_alive(state, NOW, TH) is True
+    assert cause_of_death(state, NOW, TH) == "alive"
+
+
+def test_dead_kill0_dead_with_silence() -> None:
+    """Plan §3.A4: kill0_dead AND stdout-silence together → dead.
+
+    cause_of_death format: 'kill0_dead+silence_timeout' (transport signal
+    plus silence appended).
+    """
+    state = make_state(
+        kill0_alive=False,
+        last_frame_ts_monotonic=NOW - STALE_OFFSET_SILENCE,
+    )
     assert is_alive(state, NOW, TH) is False
-    assert cause_of_death(state, NOW, TH) == "kill0_dead"
+    assert cause_of_death(state, NOW, TH) == "kill0_dead+silence_timeout"
 
 
 def test_alive_silence_alone_with_kill0_fresh() -> None:
