@@ -161,6 +161,10 @@ def _last_user_excerpt(messages: list[dict[str, str]]) -> str:
 def _llm_turn(
     state: _State, chat: Chat, tmux: shell.TmuxShell, cfg: config.AgentConfig, api_key: str
 ) -> parser.ParsedResponse | None:
+    if cfg.mock_raise_on_turn is not None and state.turn >= cfg.mock_raise_on_turn:
+        raise RuntimeError(
+            f"mock_raise_on_turn={cfg.mock_raise_on_turn} simulated crash at turn {state.turn}"
+        )
     if chat.history and chat.history[-1].role == "assistant":
         chat.append_user("Continue.")
     chat.trim_to_fit()
@@ -186,6 +190,7 @@ def _llm_turn(
         num_retries=cfg.num_retries,
         fallbacks=cfg.fallbacks,
         api_key=api_key,
+        mock_response=cfg.mock_response,
     )
     parsed = helpers.parse_or_record_error(
         result, cfg.parser, state.turn, request_id, state.emit, chat

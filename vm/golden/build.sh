@@ -133,6 +133,36 @@ else
     CPU_ARG="host"
 fi
 
+# aarch64 virt requires edk2 UEFI firmware (vars file must be writable, so we
+# copy it to TMP). Mirror orchestrator/_cli_helpers.detect_edk2_pflash search
+# paths; fail fast if firmware is missing so QEMU doesn't hang at boot.
+PFLASH_ARGS=()
+if [[ "$ARCH" == "aarch64" ]]; then
+    EDK2_CODE=""
+    EDK2_VARS=""
+    for cand in /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
+                /usr/local/share/qemu/edk2-aarch64-code.fd \
+                /usr/share/qemu/edk2-aarch64-code.fd \
+                /usr/share/AAVMF/AAVMF_CODE.fd; do
+        [[ -f "$cand" ]] && EDK2_CODE="$cand" && break
+    done
+    for cand in /opt/homebrew/share/qemu/edk2-arm-vars.fd \
+                /usr/local/share/qemu/edk2-arm-vars.fd \
+                /usr/share/qemu/edk2-arm-vars.fd \
+                /usr/share/AAVMF/AAVMF_VARS.fd; do
+        [[ -f "$cand" ]] && EDK2_VARS="$cand" && break
+    done
+    if [[ -z "$EDK2_CODE" || -z "$EDK2_VARS" ]]; then
+        echo "ERROR: aarch64 build requires edk2 firmware (install qemu + edk2-aarch64)" >&2
+        exit 1
+    fi
+    cp "$EDK2_VARS" "$TMP/edk2-vars.fd"
+    PFLASH_ARGS=(
+        -drive "if=pflash,format=raw,readonly=on,file=$EDK2_CODE"
+        -drive "if=pflash,format=raw,file=$TMP/edk2-vars.fd"
+    )
+fi
+
 # Portable timeout wrapper: GNU coreutils ships `timeout`; macOS ships nothing
 # by default (homebrew coreutils gives `gtimeout`). Fall back to a bash
 # background+kill timer so the build still halts on hangs without forcing the
@@ -146,22 +176,28 @@ else
 fi
 
 echo "    qemu binary: $QEMU_BIN  machine: $MACHINE_TYPE  accel: $ACCEL  cpu: $CPU_ARG"
-qemu_run() {
-    "$QEMU_BIN" -machine "$MACHINE_TYPE,accel=$ACCEL" -cpu "$CPU_ARG" \
-        -smp 2 -m 2048 -nographic \
-        -drive if=none,file="$GOLDEN_PATH.tmp",format=qcow2,id=disk0 -device virtio-blk-pci,drive=disk0 \
-        -drive if=none,file="$TMP/seed.iso",format=raw,media=cdrom,id=seed0 -device scsi-cd,drive=seed0 \
-        -device virtio-scsi-pci \
-        -netdev user,id=net0 -device virtio-net-pci,netdev=net0
-}
+QEMU_ARGV=(
+    "$QEMU_BIN"
+    -machine "$MACHINE_TYPE,accel=$ACCEL"
+    -cpu "$CPU_ARG"
+    -smp 2 -m 2048 -nographic
+    "${PFLASH_ARGS[@]}"
+    -drive "if=none,file=$GOLDEN_PATH.tmp,format=qcow2,id=disk0"
+    -device "virtio-blk-pci,drive=disk0"
+    -drive "if=none,file=$TMP/seed.iso,format=raw,media=cdrom,id=seed0"
+    -device "scsi-cd,drive=seed0"
+    -device "virtio-scsi-pci"
+    -netdev "user,id=net0"
+    -device "virtio-net-pci,netdev=net0"
+)
 if [[ ${#QEMU_TIMEOUT_CMD[@]} -gt 0 ]]; then
-    if ! "${QEMU_TIMEOUT_CMD[@]}" bash -c "$(declare -f qemu_run); qemu_run"; then
+    if ! "${QEMU_TIMEOUT_CMD[@]}" "${QEMU_ARGV[@]}"; then
         echo "ERROR: QEMU customization boot failed or exceeded 1800s timeout" >&2
         rm -f "$GOLDEN_PATH.tmp"
         exit 1
     fi
 else
-    qemu_run &
+    "${QEMU_ARGV[@]}" &
     QEMU_PID=$!
     ( sleep 1800 && kill -TERM "$QEMU_PID" 2>/dev/null ) &
     TIMER_PID=$!

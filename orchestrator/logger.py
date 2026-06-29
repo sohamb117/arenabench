@@ -29,6 +29,8 @@ class _SummaryShape(BaseModel):
     winner: Annotated[int, Field(ge=0, le=15)] | None
     cause: Annotated[str, Field(min_length=1)]
     final_state: Literal["DONE"]
+    alive_at_timeout: list[Annotated[int, Field(ge=0, le=15)]] | None = None
+    total_duration_s: Annotated[float, Field(ge=0.0)] | None = None
 
 
 @dataclass(frozen=True, slots=True)

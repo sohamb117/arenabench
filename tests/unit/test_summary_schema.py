@@ -19,6 +19,8 @@ class _SummaryShape(BaseModel):
     winner: Annotated[int, Field(ge=0, le=15)] | None
     cause: Annotated[str, Field(min_length=1)]
     final_state: Literal["DONE"]
+    alive_at_timeout: list[Annotated[int, Field(ge=0, le=15)]] | None = None
+    total_duration_s: Annotated[float, Field(ge=0.0)] | None = None
 
 
 def test_schema_file_exists_and_is_valid_json() -> None:

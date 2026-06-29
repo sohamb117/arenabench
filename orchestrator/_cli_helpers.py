@@ -102,11 +102,20 @@ def resolve_agent_env_vars(
     dataclass) can store it. Raises ConfigError if any required env var
     is missing on the host so the orchestrator never starts a match the
     harness cannot complete.
+
+    Agents with `mock_response` or `mock_raise_on_turn` set are skipped —
+    they will not call the real LLM, so no api_key is needed.
     """
     out: dict[int, tuple[tuple[str, str], ...]] = {}
     for agent in agents:
         agent_cfg_path = _REPO_ROOT / agent.config
         cfg_json = _parse_agent_config(agent_cfg_path)
+        if (
+            cfg_json.get("mock_response") is not None
+            or cfg_json.get("mock_raise_on_turn") is not None
+        ):
+            out[agent.slot] = ()
+            continue
         api_key_env = cfg_json.get("api_key_env")
         if not isinstance(api_key_env, str):
             raise ConfigError(

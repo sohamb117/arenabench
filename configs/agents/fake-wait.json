@@ -1,0 +1,13 @@
+{
+  "model": "fake/wait",
+  "temperature": 0.0,
+  "max_tokens": 256,
+  "request_timeout_s": 60,
+  "num_retries": 0,
+  "fallbacks": null,
+  "parser": "json",
+  "api_key_env": "ARENABENCH_NO_KEY_NEEDED",
+  "system_prompt_path": "configs/prompts/passive.txt",
+  "mock_response": "{\"analysis\":\"waiting\",\"plan\":\"wait\",\"commands\":[],\"task_complete\":false}",
+  "mock_raise_on_turn": null
+}

@@ -80,13 +80,27 @@ def call(
     num_retries: int,
     fallbacks: list[str] | None,
     api_key: str | None = None,
+    mock_response: str | None = None,
 ) -> LlmCallResult:
     """
     Single LiteLLM completion call. Times out after timeout_s; retries
     transient errors per Terminus 2 / LiteLLM defaults (litellm.num_retries).
     Raises LlmCallError on FATAL errors. Returns LlmCallResult on success.
+
+    When mock_response is set, returns it directly without hitting any real
+    LLM API. Used by deterministic e2e fixtures (plan §9 S15/S17 fake-LLM).
     """
     started = now_monotonic_s()
+    if mock_response is not None:
+        return LlmCallResult(
+            content=mock_response,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            cost_usd=0.0,
+            latency_s=elapsed_s(started),
+            error=None,
+        )
     completion = cast(_LiteLlmCompletion, litellm.completion)
     last_retryable: Exception | None = None
     for _attempt in range(max(1, num_retries)):

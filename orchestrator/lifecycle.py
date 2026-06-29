@@ -46,9 +46,23 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         ctx.logger.write_envelope(env)
         state_name = new_state
 
-    def finish(result: str, winner_slot: int | None, cause: str) -> MatchOutcome:
+    def finish(
+        result: str,
+        winner_slot: int | None,
+        cause: str,
+        *,
+        alive_at_timeout: list[int] | None = None,
+        total_duration_s: float | None = None,
+    ) -> MatchOutcome:
         res_lit = cast(Literal["victory", "draw", "timeout", "error"], result)
-        out = MatchOutcome(result=res_lit, winner=winner_slot, cause=cause, final_state="DONE")
+        out = MatchOutcome(
+            result=res_lit,
+            winner=winner_slot,
+            cause=cause,
+            final_state="DONE",
+            alive_at_timeout=alive_at_timeout,
+            total_duration_s=total_duration_s,
+        )
         ctx.logger.write_summary(out.model_dump())
         transition("DONE", cause)
         term = mk_env(
@@ -199,7 +213,15 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
             ):
                 transition("ARCHIVING", "max_duration_exceeded")
                 time.sleep(ctx.match_config.archive_grace_s)
-                return finish("timeout", None, "max_duration_exceeded")
+                return finish(
+                    "timeout",
+                    None,
+                    "max_duration_exceeded",
+                    alive_at_timeout=sorted(
+                        slot for slot, st in agents.items() if not st.dead_emitted
+                    ),
+                    total_duration_s=ctx.clock() - match_start_ts,
+                )
             time.sleep(ctx.poll_interval_s)
             continue
 
@@ -219,6 +241,16 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         else:
             transition("ARCHIVING", out.cause)
             time.sleep(ctx.match_config.archive_grace_s)
+            if out.result == "timeout":
+                return finish(
+                    out.result,
+                    out.winner,
+                    out.cause,
+                    alive_at_timeout=sorted(
+                        slot for slot, st in agents.items() if not st.dead_emitted
+                    ),
+                    total_duration_s=ctx.clock() - match_start_ts,
+                )
             return finish(out.result, out.winner, out.cause)
 
         if cast(str, state_name) != "WINNER_GRACE":

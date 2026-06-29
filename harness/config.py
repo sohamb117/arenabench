@@ -25,6 +25,8 @@ class AgentConfig(pydantic.BaseModel):
     parser: Literal["json", "xml"] = "json"
     api_key_env: Annotated[str, pydantic.Field(pattern=_ENV_KEY_PATTERN)]
     system_prompt_path: str
+    mock_response: str | None = None
+    mock_raise_on_turn: int | None = None
 
 
 def load_config(path: pathlib.Path) -> AgentConfig:
@@ -50,9 +52,15 @@ def load_config(path: pathlib.Path) -> AgentConfig:
 def resolve_api_key(cfg: AgentConfig) -> str:
     """Return the value of the env var named by ``cfg.api_key_env``.
 
+    Returns the literal string "mock" without consulting env when
+    ``cfg.mock_response`` or ``cfg.mock_raise_on_turn`` is set, so fake-LLM
+    e2e tests do not require real API credentials.
+
     Raises:
-        ConfigError: if the env var is not set.
+        ConfigError: if the env var is not set AND mocking is off.
     """
+    if cfg.mock_response is not None or cfg.mock_raise_on_turn is not None:
+        return "mock"
     value = os.environ.get(cfg.api_key_env)
     if value is None:
         raise ConfigError(
