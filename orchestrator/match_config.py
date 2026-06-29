@@ -81,17 +81,6 @@ class MatchConfig(pydantic.BaseModel):
 
         return self
 
-    @pydantic.model_validator(mode="after")
-    def _reject_cgroup_limits_until_b13_implemented(self) -> MatchConfig:
-        if self.cgroup_limits is not None:
-            raise ConfigError(
-                "cgroup_limits enforcement is deferred (plan §3.B13); set to null until "
-                "the systemd-run wrapper for SSH-launched harnesses lands.",
-                path="<memory>",
-                field="cgroup_limits",
-            )
-        return self
-
 
 def load_match_config(path: Path) -> MatchConfig:
     try:
