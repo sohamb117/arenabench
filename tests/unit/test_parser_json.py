@@ -1,3 +1,5 @@
+from typing import Literal, cast
+
 import pytest
 
 from common.errors import ParseError
@@ -83,5 +85,6 @@ def test_parse_dispatch() -> None:
     result = parse(raw, "json")
     assert result.analysis == "A"
 
+    bad_mode = cast(Literal["json", "xml"], "yaml")
     with pytest.raises(ParseError):
-        parse(raw, "yaml")  # type: ignore
+        parse(raw, bad_mode)

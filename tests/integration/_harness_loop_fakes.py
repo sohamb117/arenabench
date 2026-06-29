@@ -5,7 +5,7 @@ import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import pytest
 
@@ -38,6 +38,7 @@ class HarnessRun:
     peer: InMemoryTransport
     result: dict[str, RunResult]
     thread: threading.Thread
+    captured_messages: list[list[dict[str, str]]]
 
 
 class FakeShell:
@@ -117,15 +118,25 @@ def run_harness_thread(
 ) -> HarnessRun:
     transport = InMemoryTransport()
     result: dict[str, RunResult] = {}
+    captured_messages: list[list[dict[str, str]]] = []
     calls = iter(responses)
 
     def fake_call(**kwargs: object) -> LlmCallResult:
+        messages_obj = kwargs.get("messages")
+        if isinstance(messages_obj, list):
+            snapshot: list[dict[str, str]] = []
+            for raw in cast(list[object], messages_obj):
+                if isinstance(raw, dict):
+                    typed = cast(dict[object, object], raw)
+                    snapshot.append({str(k): str(v) for k, v in typed.items()})
+            captured_messages.append(snapshot)
         next_result = next(calls)
         if isinstance(next_result, BaseException):
             raise next_result
         return next_result
 
     monkeypatch.setattr(harness.llm, "call", fake_call)
+    monkeypatch.setattr(harness.loop, "_captured_messages", captured_messages, raising=False)
 
     def target() -> None:
         try:
@@ -145,7 +156,9 @@ def run_harness_thread(
 
     thread = threading.Thread(target=target, daemon=True)
     thread.start()
-    return HarnessRun(peer=transport.peer(), result=result, thread=thread)
+    return HarnessRun(
+        peer=transport.peer(), result=result, thread=thread, captured_messages=captured_messages
+    )
 
 
 def recv(peer: InMemoryTransport) -> Envelope:

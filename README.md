@@ -59,9 +59,11 @@ uv run arenabench validate configs/matches/demo-1v1.json
 # → OK match_id=demo-1v1 n_agents=2 network_policy=allowlist
 
 uv run arenabench replay logs/matches/<match-id>/   # pretty-prints summary.json
-uv run arenabench run configs/matches/demo-1v1.json  # → exit 2 (wiring landed in W6, real-VM glue TODO)
-uv run arenabench build-vm                            # → exit 2 (invoke vm/golden/build.sh directly for now)
+uv run arenabench run configs/matches/demo-1v1.json # spawns QEMU + SSH transport + lifecycle.run_match
+uv run arenabench build-vm                          # shells out to vm/golden/build.sh
 ```
+
+The `run` subcommand requires a built golden image (`vm/images/arenabench-golden-aarch64.qcow2`); exits with code 3 if missing. `build-vm` shells out to `vm/golden/build.sh` with `ARENABENCH_ARCH` passed through.
 
 ### Build the golden VM image
 
@@ -209,9 +211,9 @@ The build plan, locked architectural decisions, and 18 binary-observable scenari
 
 ## Known gaps for full v1
 
-- `arenabench run` CLI subcommand currently exits 2 ("not yet wired"). The orchestrator/lifecycle.py `run_match` is fully tested via fakes; wiring it to QEMU spawn + real transport + summary write is the next concrete step.
-- vsock is unavailable on macOS Docker Desktop and colima per R2; the orchestrator + harness ship both `transport_vsock.py` and `transport_ssh.py`. Auto-selecting between them at boot is wired through `scripts/probe-vsock.sh` and `docker-compose.vsock.yml`; the harness invocation path needs the final glue.
-- `vm/CVES.md` is a placeholder; populate via the snapshot procedure documented in the file when re-pinning.
+- The orchestrator-side wiring (CLI `run` → QEMU spawn → `SshOrchestratorServer` → `lifecycle.run_match`) is committed; **actual e2e execution still requires** (a) building the golden image with `vm/golden/build.sh` (~15–30 min, downloads ~324 MB Debian image), (b) setting `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`, and (c) running on a host with reachable QEMU (Apple Silicon TCG works but is slow per plan R1).
+- vsock is unavailable on macOS Docker Desktop and colima per plan R2; `harness/transport_ssh.py` + `orchestrator/ssh_server.py` are the runtime path. `harness/transport_vsock.py` is reserved for environments where `/dev/vhost-vsock` is exposed.
+- `vm/CVES.md` is a placeholder; populate via the snapshot procedure documented in the file after the first golden build.
 
 ## License
 

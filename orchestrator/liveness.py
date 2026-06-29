@@ -50,16 +50,31 @@ def is_alive(state: AgentLivenessState, now_monotonic: float, th: LivenessThresh
 
 
 def cause_of_death(state: AgentLivenessState, now_monotonic: float, th: LivenessThresholds) -> str:
-    """One of: 'vsock_disconnect', 'kill0_dead', 'silence_timeout',
-    'kill0_stale_and_silence', 'alive'. Returns 'alive' iff is_alive() is True."""
-    if not state.vsock_connected:
-        return "vsock_disconnect"
+    """Combined-signal cause string. Returns '+'-joined list of failing signals.
 
+    Possible single tokens (joined with '+'):
+      'vsock_disconnect'   — explicit close
+      'kill0_dead'         — kill0 probe returned alive=false
+      'silence_timeout'    — no frames within silence_threshold_s
+      'kill0_stale_and_silence' — corroborated dual failure (probe stale AND silent)
+      'alive'              — agent is alive
+
+    Plan §9 S11 binary observable expects the combined form
+    'vsock_disconnect+kill0_dead' when both signals fail at once.
+    """
     silence = _silence_violation(state, now_monotonic, th)
     kill0_stale = (now_monotonic - state.kill0_ts_monotonic) > th.kill0_max_age_s
 
+    transport_signals: list[str] = []
+    if not state.vsock_connected:
+        transport_signals.append("vsock_disconnect")
     if not state.kill0_alive:
-        return "kill0_dead"
+        transport_signals.append("kill0_dead")
+
+    if transport_signals:
+        if silence:
+            transport_signals.append("silence_timeout")
+        return "+".join(transport_signals)
 
     if silence and kill0_stale:
         return "kill0_stale_and_silence"

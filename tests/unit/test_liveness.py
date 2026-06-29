@@ -92,6 +92,22 @@ def test_dead_kill0_stale_and_silence() -> None:
     assert cause_of_death(state, NOW, TH) == "kill0_stale_and_silence"
 
 
+def test_dead_vsock_and_kill0_combined_per_s11() -> None:
+    """Plan §9 S11: cause is '+'-joined; 'vsock_disconnect+kill0_dead' when both fail."""
+    state = make_state(vsock_connected=False, kill0_alive=False)
+    assert is_alive(state, NOW, TH) is False
+    assert cause_of_death(state, NOW, TH) == "vsock_disconnect+kill0_dead"
+
+
+def test_dead_vsock_kill0_and_silence_combined() -> None:
+    state = make_state(
+        vsock_connected=False,
+        kill0_alive=False,
+        last_frame_ts_monotonic=NOW - STALE_OFFSET_SILENCE,
+    )
+    assert cause_of_death(state, NOW, TH) == "vsock_disconnect+kill0_dead+silence_timeout"
+
+
 def test_never_seen_frame_is_silent() -> None:
     state = make_state(last_frame_ts_monotonic=0.0)
     assert is_alive(state, NOW, TH) is False

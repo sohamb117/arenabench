@@ -32,6 +32,11 @@ class FakeVsockServer:
         self.scheduled: list[tuple[float, int, Envelope]] = []
         self.outbound: dict[int, list[Envelope]] = {}
         self.auto_kill0: bool = True
+        self.dead_pids: set[int] = set()
+
+    def mark_dead(self, pid: int) -> None:
+        """Cause subsequent auto_kill0 responses for this pid to report alive=False."""
+        self.dead_pids.add(pid)
 
     def schedule(self, delay_s: float, port: int, env: Envelope) -> None:
         self.scheduled.append((self.clock.now + delay_s, port, env))
@@ -51,6 +56,7 @@ class FakeVsockServer:
         self.outbound.setdefault(port, []).append(env)
         if port == PROBE_PORT and env.kind == "kill0" and self.auto_kill0:
             kill0 = cast(Kill0, env.data)
+            alive = kill0.pid not in self.dead_pids
             self.inbound.setdefault(PROBE_PORT, []).append(
                 Envelope(
                     ts=datetime.now(UTC),
@@ -61,7 +67,7 @@ class FakeVsockServer:
                     data=Kill0Response(
                         request_id=kill0.request_id,
                         pid=kill0.pid,
-                        alive=True,
+                        alive=alive,
                     ),
                 )
             )

@@ -6,11 +6,12 @@
 #   1. apt install python3, python3-venv, tmux, git, iptables, ca-certificates
 #   2. install uv (Astral) via the official installer
 #   3. install Python 3.12 via uv
-#   4. drop the arenabench harness package (built and copied in via the
-#      seed-iso write_files in build.sh — TODO once we have a wheel)
-#   5. drop vm/guest_probe.py to /usr/local/sbin/arenabench-guest-probe
+#   4. install the arenabench harness package from a pip-installable source
+#      (path is /opt/arenabench, populated by build.sh via the seed-iso
+#      write_files entry — see ARENABENCH_PKG_DIR below)
+#   5. drop vm/guest_probe.py to /usr/local/sbin/arenabench-guest-probe with
+#      a matching systemd unit
 #   6. install allowlist-iptables.sh as a systemd unit that runs at boot
-#   7. enable systemd-per-user-units in /etc/systemd/system/[email protected]
 #
 # This script is idempotent (rerunning has no harmful effect) and noop-safe
 # (logs every step, exits 0 on success).
@@ -28,13 +29,38 @@ apt-get install -y --no-install-recommends \
     tmux git iptables ca-certificates curl xz-utils \
     dnsmasq-base systemd-container
 
-# uv via the official installer (idempotent — re-running upgrades or no-ops)
 if ! command -v uv >/dev/null 2>&1; then
     curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh
 fi
 /usr/local/bin/uv python install 3.12 || true
 
-# Place the iptables allowlist script + systemd unit
+ARENABENCH_PKG_DIR=${ARENABENCH_PKG_DIR:-/opt/arenabench}
+if [[ -d "$ARENABENCH_PKG_DIR" ]]; then
+    /usr/local/bin/uv pip install --system "$ARENABENCH_PKG_DIR"
+else
+    echo "WARN: $ARENABENCH_PKG_DIR not present; harness package not installed"
+fi
+
+if [[ -f "$ARENABENCH_PKG_DIR/vm/guest_probe.py" ]]; then
+    install -m 0755 "$ARENABENCH_PKG_DIR/vm/guest_probe.py" \
+        /usr/local/sbin/arenabench-guest-probe
+    cat > /etc/systemd/system/arenabench-guest-probe.service <<'UNIT'
+[Unit]
+Description=arenabench guest-probe daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/sbin/arenabench-guest-probe
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl enable arenabench-guest-probe.service
+fi
+
 install -m 0755 /etc/arenabench/allowlist-iptables.sh /usr/local/sbin/arenabench-allowlist
 cat > /etc/systemd/system/arenabench-allowlist.service <<'UNIT'
 [Unit]
@@ -53,7 +79,5 @@ WantedBy=multi-user.target
 UNIT
 systemctl enable arenabench-allowlist.service
 
-# Enable per-user systemd lingering at first boot (cloud-init's user provisioning
-# will call `loginctl enable-linger agent<k>` from the per-match seed-iso).
-
 echo "$(date -Iseconds) === arenabench customize.sh done ==="
+

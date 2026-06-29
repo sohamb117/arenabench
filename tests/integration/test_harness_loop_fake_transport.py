@@ -21,6 +21,7 @@ from tests.integration._harness_loop_fakes import (
 MAX_CONTEXT_TOKENS = 200
 EXPECTED_HEARTBEAT_MESSAGES = 3
 EXPECTED_CONFIRMATION_CALLS = 2
+MIN_LLM_CALLS_FOR_HEARTBEAT_CHECK = 2
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +88,13 @@ def test_heartbeat_injected_before_next_llm_request(
     assert request.kind == "llm_request"
     assert request.data.kind == "llm_request"
     assert request.data.messages_count == EXPECTED_HEARTBEAT_MESSAGES
+    # S4 plan §9 binary observable: the next llm_request's last user turn must
+    # contain "[HEARTBEAT t=" — verified by inspecting the actual messages array
+    # passed to litellm (captured by _harness_loop_fakes.fake_call).
+    assert len(run.captured_messages) >= MIN_LLM_CALLS_FOR_HEARTBEAT_CHECK
+    second_call_messages = run.captured_messages[1]
+    assert second_call_messages[-1]["role"] == "user"
+    assert "[HEARTBEAT t=" in second_call_messages[-1]["content"]
 
 
 def test_parser_json_happy_path_sets_parse_ok(

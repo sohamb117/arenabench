@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arenabench/schemas/summary.schema.json",
+  "title": "arenabench MatchOutcome",
+  "description": "Per-match summary.json produced by orchestrator.lifecycle.run_match",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["result", "winner", "cause", "final_state"],
+  "properties": {
+    "result": {
+      "type": "string",
+      "enum": ["victory", "draw", "timeout", "error"]
+    },
+    "winner": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0, "maximum": 15 },
+        { "type": "null" }
+      ]
+    },
+    "cause": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Free-form cause string; for plan §9 S11 binary observable expects 'vsock_disconnect+kill0_dead' or similar '+'-joined signal list"
+    },
+    "final_state": {
+      "type": "string",
+      "enum": ["DONE"]
+    }
+  }
+}

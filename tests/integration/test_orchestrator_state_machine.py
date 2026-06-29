@@ -30,9 +30,12 @@ from tests.integration._state_machine_fakes import (
 GRACE_PERIOD_S = 30
 SHELL_PORT_0 = 10000
 SHELL_PORT_1 = 10001
+SHELL_PORT_2 = 10002
+SHELL_PORT_3 = 10003
 LLM_SCHEDULE_TIME_S = 1.0
 DEATH_TIME_S = 30.0
 SURVIVOR_DEATH_TIME_S = 45.0
+N_AGENTS_4 = 4
 
 
 def _llm_response_env(turn: int = 1) -> "Envelope":
@@ -201,9 +204,80 @@ def test_provisioning_failed(base_ctx: MatchContext) -> None:
     assert "PROVISIONING_FAILED" in state_transitions(_logger(base_ctx).envs)
 
 
+def test_n4_free_for_all_observes_four_pid_announce_and_ports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S6 plan §9: N=4 free-for-all observes 4 pid_announce frames + ports 10000..10003."""
+    clock = SimClock()
+    monkeypatch.setattr(time, "sleep", make_sleep_patch(clock))
+    vsock = FakeVsockServer(clock)
+    logger = FakeLogger()
+    agents = [AgentEntry(slot=i, user=f"agent{i}", config=f"c{i}.json") for i in range(N_AGENTS_4)]
+    config = MatchConfig(
+        match_id="match-n4",
+        n_agents=N_AGENTS_4,
+        heartbeat_interval_s=10,
+        grace_period_s=GRACE_PERIOD_S,
+        max_duration_s=100,
+        archive_grace_s=0,
+        network_policy="allowlist",
+        agents=agents,
+    )
+    agent_ports = {0: SHELL_PORT_0, 1: SHELL_PORT_1, 2: SHELL_PORT_2, 3: SHELL_PORT_3}
+    ctx = MatchContext(
+        match_config=config,
+        vsock_server=vsock,
+        guest_probe_port=PROBE_PORT,
+        agent_ports=agent_ports,
+        logger=cast(MatchLogger, logger),
+        clock=clock,
+        liveness=LivenessThresholds(
+            silence_threshold_s=1000.0, llm_max_s=300.0, kill0_max_age_s=1000.0
+        ),
+        poll_interval_s=1.0,
+    )
+
+    vsock.schedule(
+        0.1,
+        PROBE_PORT,
+        make_env(
+            "boot_ack_response",
+            BootAckResponse(request_id="b1", kernel="k", uptime_s=1.0, cid=3),
+        ),
+    )
+    for slot in range(N_AGENTS_4):
+        vsock.schedule(
+            0.2 + slot * 0.1,
+            agent_ports[slot],
+            make_env(
+                "pid_announce",
+                PidAnnounce(
+                    pid=100 + slot,
+                    user=f"agent{slot}",
+                    uid=100 + slot,
+                    hostname="h",
+                    parser="json",
+                    model="m",
+                ),
+            ),
+        )
+    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, _llm_response_env())
+    for slot in range(N_AGENTS_4 - 1):
+        vsock.schedule(DEATH_TIME_S + slot, agent_ports[slot + 1], _crash_env())
+
+    outcome = run_match(ctx)
+
+    assert outcome.result == "victory"
+    assert outcome.winner == 0
+    pid_announces = [e for e in logger.envs if e.kind == "pid_announce"]
+    assert len(pid_announces) == N_AGENTS_4, f"expected {N_AGENTS_4}, got {len(pid_announces)}"
+    assert ctx.agent_ports == {0: 10000, 1: 10001, 2: 10002, 3: 10003}
+
+
 def test_harness_dead_and_match_terminated_frames(base_ctx: MatchContext) -> None:
     vsock = _vsock(base_ctx)
     schedule_boot_and_provision(vsock)
+    vsock.mark_dead(100)  # the dying agent's pid (slot 0 in schedule_boot_and_provision)
     vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, _crash_env())
     run_match(base_ctx)
 
@@ -214,7 +288,8 @@ def test_harness_dead_and_match_terminated_frames(base_ctx: MatchContext) -> Non
     dead_data = dead[0].data
     assert isinstance(dead_data, HarnessDead)
     assert dead_data.slot == 0
-    assert dead_data.cause == "vsock_disconnect"
+    # S11 binary observable per plan §9: cause is '+'-joined when both signals fail
+    assert dead_data.cause == "vsock_disconnect+kill0_dead"
     assert len(term) == 1
     term_data = term[0].data
     assert isinstance(term_data, MatchTerminated)

@@ -1,5 +1,6 @@
 import json
 import pathlib
+import subprocess
 from typing import cast
 
 import pytest
@@ -11,7 +12,8 @@ _HEARTBEAT = 120
 _GRACE = 30
 _MAX_DURATION = 1800
 _ARCHIVE_GRACE = 60
-_NOT_YET_WIRED_EXIT = 2
+_EXIT_CONFIG_ERROR = 1
+_EXIT_RUNTIME_ERROR = 3
 
 
 def _valid_match_payload(n_agents: int = 2) -> dict[str, object]:
@@ -91,18 +93,36 @@ def test_replay_missing_summary_fails(runner: CliRunner, tmp_path: pathlib.Path)
     assert result.exit_code == 1
 
 
-def test_run_command_reports_not_wired(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+def test_run_command_reports_missing_golden_image(
+    runner: CliRunner, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "match.json"
     path.write_text(json.dumps(_valid_match_payload()), encoding="utf-8")
+    missing_golden = tmp_path / "no-such-golden.qcow2"
 
-    result = runner.invoke(app, ["run", str(path)])
+    result = runner.invoke(
+        app, ["run", str(path), "--log-root", str(tmp_path), "--golden-image", str(missing_golden)]
+    )
 
-    assert result.exit_code == _NOT_YET_WIRED_EXIT
+    assert result.exit_code == _EXIT_RUNTIME_ERROR
+    assert "golden image missing" in (result.output + (result.stderr or ""))
 
 
-def test_build_vm_reports_not_wired(runner: CliRunner) -> None:
-    result = runner.invoke(app, ["build-vm"])
-    assert result.exit_code == _NOT_YET_WIRED_EXIT
+def test_build_vm_shells_out_to_build_script(
+    runner: CliRunner, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(args=argv, returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = runner.invoke(app, ["build-vm", "--arch", "aarch64"])
+
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    assert calls[0][0].endswith("vm/golden/build.sh")
 
 
 def test_help_text_lists_all_subcommands(runner: CliRunner) -> None:
