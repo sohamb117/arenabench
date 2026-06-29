@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,7 @@ from orchestrator.ssh_server import (
     AGENT_PORT_BASE,
     PROBE_PORT,
     SshOrchestratorServer,
+    build_transport_configs,
     port_to_slot,
     slot_to_port,
 )
@@ -80,6 +82,47 @@ def test_serialize_envelope_works_for_pid_announce_round_trip() -> None:
     assert wire.startswith('{"v":1')
     assert '"src":"agent0"' in wire
     assert '"kind":"pid_announce"' in wire
+
+
+def test_agent_env_vars_propagate_to_per_slot_ssh_configs() -> None:
+    """Gap-5 lock: build_transport_configs forwards agent_env_vars to each SshConfig."""
+    agents = _agents(2)
+    env_map = {
+        0: (("ANTHROPIC_API_KEY", "sk-a"),),
+        1: (("OPENAI_API_KEY", "sk-o"),),
+    }
+
+    configs = build_transport_configs(
+        agents=agents,
+        ssh_host=SSH_HOST,
+        ssh_port=SSH_PORT,
+        agent_env_vars=env_map,
+    )
+
+    assert configs[slot_to_port(0)].env_vars == (("ANTHROPIC_API_KEY", "sk-a"),)
+    assert configs[slot_to_port(1)].env_vars == (("OPENAI_API_KEY", "sk-o"),)
+    assert configs[PROBE_PORT].env_vars is None
+
+
+def test_probe_remote_command_uses_stdio_flag() -> None:
+    """Gap-2 lock: probe transport must invoke `vm.guest_probe --stdio`."""
+    configs = build_transport_configs(agents=_agents(1), ssh_host=SSH_HOST, ssh_port=SSH_PORT)
+
+    assert configs[PROBE_PORT].remote_command == ("python3", "-m", "vm.guest_probe", "--stdio")
+
+
+def test_key_path_propagates_to_all_transports() -> None:
+    """Gap-4 lock: key_path injected once at the server level propagates to every transport."""
+    key = Path("/tmp/test-ssh-key")
+    configs = build_transport_configs(
+        agents=_agents(2),
+        ssh_host=SSH_HOST,
+        ssh_port=SSH_PORT,
+        key_path=key,
+    )
+
+    for cfg in configs.values():
+        assert cfg.key_path == key
 
 
 @pytest.mark.e2e

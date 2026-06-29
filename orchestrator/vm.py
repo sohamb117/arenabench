@@ -32,6 +32,7 @@ class QemuConfig:
     edk2_vars: Path | None = None
     console_log: Path | None = None
     host_ssh_port: int | None = None
+    enable_vsock: bool = True
 
 
 class QemuVm:
@@ -104,8 +105,17 @@ class QemuVm:
             [
                 "-device",
                 "virtio-scsi-pci",
-                "-device",
-                f"vhost-vsock-pci,guest-cid={self._cfg.cid}",
+            ]
+        )
+        if self._cfg.enable_vsock:
+            argv.extend(
+                [
+                    "-device",
+                    f"vhost-vsock-pci,guest-cid={self._cfg.cid}",
+                ]
+            )
+        argv.extend(
+            [
                 "-netdev",
                 self._netdev_arg(),
                 "-device",

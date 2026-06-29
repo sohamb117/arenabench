@@ -20,6 +20,7 @@ class SshConfig:
     connect_timeout_s: float = 10.0
     keepalive_interval_s: float = 30.0
     remote_command: tuple[str, ...] | None = None
+    env_vars: tuple[tuple[str, str], ...] | None = None
 
 
 class SshTransport:
@@ -113,6 +114,8 @@ class SshTransport:
             ]
         else:
             command = list(self._cfg.remote_command)
+        if self._cfg.env_vars:
+            command = ["env", *(f"{k}={v}" for k, v in self._cfg.env_vars), *command]
         return [
             "ssh",
             "-p",

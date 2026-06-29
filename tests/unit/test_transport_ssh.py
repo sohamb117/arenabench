@@ -219,6 +219,38 @@ def test_ssh_transport_satisfies_transport_protocol() -> None:
     assert transport.is_open() is False
 
 
+def test_env_vars_prepend_env_prefix_to_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gap-5 lock: SshConfig.env_vars must inject `env K=V` BEFORE python3 on the remote."""
+    process = FakeSshProcess()
+    argv = _patch_popen(monkeypatch, process)
+
+    SshTransport(
+        SshConfig(
+            host="127.0.0.1",
+            port=22222,
+            user="agent0",
+            env_vars=(("ANTHROPIC_API_KEY", "sk-test-1"), ("FOO", "bar")),
+        )
+    ).open()
+
+    env_index = argv.index("env")
+    py_index = argv.index("python3")
+    assert env_index < py_index
+    assert argv[env_index + 1] == "ANTHROPIC_API_KEY=sk-test-1"
+    assert argv[env_index + 2] == "FOO=bar"
+    process.close_pipes()
+
+
+def test_env_vars_none_means_no_env_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    process = FakeSshProcess()
+    argv = _patch_popen(monkeypatch, process)
+
+    SshTransport(SshConfig(host="127.0.0.1", port=22222, user="agent0")).open()
+
+    assert "env" not in argv
+    process.close_pipes()
+
+
 @pytest.mark.e2e
 def test_round_trip_real_ssh() -> None:
     if os.environ.get("ARENABENCH_E2E") != "1" or not os.environ.get("ARENABENCH_SSH_TARGET"):

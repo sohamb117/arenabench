@@ -1,4 +1,5 @@
 import getpass
+import io
 import os
 import socket
 import sys
@@ -20,7 +21,15 @@ from common.protocol import (
     parse_envelope,
     serialize_envelope,
 )
-from vm.guest_probe import boot_info, handle_request, kill0_alive, proc_pids_for_user, serve
+from vm.guest_probe import (
+    boot_info,
+    handle_request,
+    kill0_alive,
+    main,
+    proc_pids_for_user,
+    serve,
+    serve_stdio,
+)
 
 TS = datetime(2026, 6, 29, 0, 0, tzinfo=UTC)
 SRC = "orchestrator"
@@ -103,3 +112,48 @@ def test_serve_loopback_over_unix_socketpair() -> None:
     assert isinstance(resp.data, Kill0Response)
     assert resp.data.request_id == KILL0_REQ
     assert resp.data.pid == PID_LIVE
+
+
+def test_serve_stdio_answers_kill0_via_string_buffers() -> None:
+    """Gap-2 lock: --stdio mode reads JSONL on stdin and writes responses on stdout."""
+    wire = serialize_envelope(_env(Kill0(request_id=KILL0_REQ, pid=PID_LIVE))) + "\n"
+    stdin = io.StringIO(wire)
+    stdout = io.StringIO()
+
+    serve_stdio(stdin=stdin, stdout=stdout)
+
+    raw = stdout.getvalue().strip()
+    assert raw
+    resp = parse_envelope(raw)
+    assert resp.kind == "kill0_response"
+    assert isinstance(resp.data, Kill0Response)
+    assert resp.data.request_id == KILL0_REQ
+
+
+def test_serve_stdio_skips_invalid_frames_without_crashing() -> None:
+    stdin = io.StringIO(
+        "not valid json\n"
+        + serialize_envelope(_env(Kill0(request_id=KILL0_REQ, pid=PID_LIVE)))
+        + "\n"
+    )
+    stdout = io.StringIO()
+
+    serve_stdio(stdin=stdin, stdout=stdout)
+
+    lines = [line for line in stdout.getvalue().splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert parse_envelope(lines[0]).kind == "kill0_response"
+
+
+def test_main_with_stdio_flag_invokes_serve_stdio(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[bool] = []
+
+    def fake_serve_stdio() -> None:
+        called.append(True)
+
+    monkeypatch.setattr("vm.guest_probe.serve_stdio", fake_serve_stdio)
+    monkeypatch.setattr(sys, "argv", ["vm.guest_probe", "--stdio"])
+
+    main()
+
+    assert called == [True]

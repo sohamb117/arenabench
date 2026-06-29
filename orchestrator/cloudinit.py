@@ -63,6 +63,7 @@ def render_user_data(
     match_config: MatchConfig,
     config_blobs: dict[int, str],
     prompt_blobs: dict[int, str],
+    ssh_pubkey: str,
     template_path: Path = _DEFAULT_TEMPLATE_PATH,
 ) -> str:
     agents = _build_agents(match_config, config_blobs, prompt_blobs, template_path)
@@ -77,6 +78,7 @@ def render_user_data(
     return template.render(
         agents=agents,
         network_policy=match_config.network_policy,
+        ssh_pubkey=ssh_pubkey,
     )
 
 

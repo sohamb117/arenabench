@@ -34,6 +34,43 @@ def port_to_slot(port: int) -> int:
     return port - AGENT_PORT_BASE
 
 
+def build_transport_configs(
+    *,
+    agents: list[AgentEntry],
+    ssh_host: str,
+    ssh_port: int,
+    key_path: Path | None = None,
+    probe_user: str = "root",
+    connect_timeout_s: float = 30.0,
+    agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
+) -> dict[int, SshConfig]:
+    """Build the per-port SshConfig dict the SshOrchestratorServer will multiplex.
+
+    Extracted so tests can verify env_vars/key_path/remote_command propagation
+    without reaching into the SshOrchestratorServer's internal transport map.
+    """
+    env_map = agent_env_vars or {}
+    configs: dict[int, SshConfig] = {}
+    for agent in agents:
+        configs[slot_to_port(agent.slot)] = SshConfig(
+            host=ssh_host,
+            port=ssh_port,
+            user=agent.user,
+            key_path=key_path,
+            connect_timeout_s=connect_timeout_s,
+            env_vars=env_map.get(agent.slot),
+        )
+    configs[PROBE_PORT] = SshConfig(
+        host=ssh_host,
+        port=ssh_port,
+        user=probe_user,
+        key_path=key_path,
+        connect_timeout_s=connect_timeout_s,
+        remote_command=("python3", "-m", "vm.guest_probe", "--stdio"),
+    )
+    return configs
+
+
 class SshOrchestratorServer:
     """Per-match SSH multiplexer. One SshTransport per agent + one for guest-probe.
 
@@ -49,26 +86,20 @@ class SshOrchestratorServer:
         key_path: Path | None = None,
         probe_user: str = "root",
         connect_timeout_s: float = 30.0,
+        agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
     ) -> None:
-        self._transports: dict[int, SshTransport] = {}
-        for agent in agents:
-            cfg = SshConfig(
-                host=ssh_host,
-                port=ssh_port,
-                user=agent.user,
-                key_path=key_path,
-                connect_timeout_s=connect_timeout_s,
-            )
-            self._transports[slot_to_port(agent.slot)] = SshTransport(cfg)
-        probe_cfg = SshConfig(
-            host=ssh_host,
-            port=ssh_port,
-            user=probe_user,
+        configs = build_transport_configs(
+            agents=agents,
+            ssh_host=ssh_host,
+            ssh_port=ssh_port,
             key_path=key_path,
+            probe_user=probe_user,
             connect_timeout_s=connect_timeout_s,
-            remote_command=("python3", "-m", "vm.guest_probe"),
+            agent_env_vars=agent_env_vars,
         )
-        self._transports[PROBE_PORT] = SshTransport(probe_cfg)
+        self._transports: dict[int, SshTransport] = {
+            port: SshTransport(cfg) for port, cfg in configs.items()
+        }
 
     def start(self) -> None:
         for t in self._transports.values():

@@ -2,7 +2,9 @@ import os
 import pathlib
 import pwd
 import socket
+import sys
 from datetime import UTC, datetime
+from typing import IO
 
 from pydantic import ValidationError
 
@@ -20,6 +22,7 @@ from common.protocol import (
 )
 
 _CID = {"value": 0}
+_STDIO_FLAG = "--stdio"
 
 
 def kill0_alive(pid: int) -> bool:
@@ -123,7 +126,41 @@ def serve(listener: socket.socket, our_cid: int = 0) -> None:
             _serve_conn(conn)
 
 
-def main() -> None:
+def serve_stdio(
+    stdin: IO[str] | None = None,
+    stdout: IO[str] | None = None,
+    our_cid: int = 0,
+) -> None:
+    """Serve JSONL probe requests over stdin/stdout (used by SSH transport).
+
+    SshOrchestratorServer runs `python3 -m vm.guest_probe --stdio` over SSH;
+    the SSH stdin/stdout pipes are the wire, mirroring StdioTransport on the
+    harness side.
+    """
+    _CID["value"] = our_cid
+    src_in = stdin if stdin is not None else sys.stdin
+    src_out = stdout if stdout is not None else sys.stdout
+    try:
+        for raw in src_in:
+            line = raw.rstrip("\n")
+            if not line:
+                continue
+            try:
+                resp = handle_request(parse_envelope(line))
+            except (TransportError, ValidationError, ValueError):
+                continue
+            if resp is not None:
+                src_out.write(serialize_envelope(resp) + "\n")
+                src_out.flush()
+    except (KeyboardInterrupt, BrokenPipeError):
+        return
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = list(argv if argv is not None else sys.argv[1:])
+    if _STDIO_FLAG in args:
+        serve_stdio()
+        return
     if hasattr(socket, "AF_VSOCK"):
         listener = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         listener.bind((getattr(socket, "VMADDR_CID_ANY", 2), 9999))

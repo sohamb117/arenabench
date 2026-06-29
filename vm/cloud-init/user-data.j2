@@ -1,12 +1,21 @@
 #cloud-config
 
+ssh_pwauth: false
+disable_root: false
+
 users:
+  - name: root
+    lock_passwd: false
+    ssh_authorized_keys:
+      - "{{ ssh_pubkey }}"
 {%- for agent in agents %}
   - name: {{ agent.user }}
     shell: /bin/bash
     groups: [users]
     lock_passwd: true
     sudo: false
+    ssh_authorized_keys:
+      - "{{ ssh_pubkey }}"
 {%- endfor %}
 
 write_files:

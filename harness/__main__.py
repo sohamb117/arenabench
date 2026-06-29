@@ -15,7 +15,10 @@ are the wire — the same channel that vsock would carry in a vsock-enabled host
 from __future__ import annotations
 
 import getpass
+import os
+import selectors
 import sys
+import time
 from pathlib import Path
 
 from common.errors import TransportError
@@ -36,12 +39,17 @@ class StdioTransport:
 
     The orchestrator's `SshOrchestratorServer` opens an ssh subprocess that runs
     `python3 -m harness <config>`. The ssh stdin/stdout pipes are this transport's wire.
+    `recv` is non-blocking with timeout support via selectors+os.read, so
+    `harness.loop._process_pending` can poll without stalling between LLM turns.
     """
 
     def __init__(self) -> None:
-        self._stdin = sys.stdin.buffer
+        self._stdin_fd = sys.stdin.fileno()
         self._stdout = sys.stdout.buffer
+        self._buffer = bytearray()
         self._closed = False
+        self._selector = selectors.DefaultSelector()
+        self._selector.register(self._stdin_fd, selectors.EVENT_READ)
 
     def send(self, env: Envelope) -> None:
         if self._closed:
@@ -51,20 +59,32 @@ class StdioTransport:
         self._stdout.flush()
 
     def recv(self, timeout_s: float | None = None) -> Envelope | None:
-        _ = timeout_s  # stdin is line-buffered; readline blocks regardless
         if self._closed:
             return None
-        line = self._stdin.readline(MAX_FRAME_BYTES)
-        if not line:
-            self._closed = True
-            return None
-        return parse_envelope(line.decode("utf-8").rstrip("\n"))
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
+        while b"\n" not in self._buffer:
+            remaining_s = None if deadline is None else max(0.0, deadline - time.monotonic())
+            if not self._selector.select(remaining_s):
+                return None
+            chunk = os.read(self._stdin_fd, MAX_FRAME_BYTES)
+            if not chunk:
+                self._closed = True
+                return None
+            self._buffer.extend(chunk)
+            if len(self._buffer) > MAX_FRAME_BYTES and b"\n" not in self._buffer:
+                raise TransportError("stdio frame exceeds max bytes")
+        line, _, remainder = self._buffer.partition(b"\n")
+        self._buffer = bytearray(remainder)
+        return parse_envelope(line.decode("utf-8"))
 
     def is_open(self) -> bool:
         return not self._closed
 
     def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
+        self._selector.close()
 
 
 def main(argv: list[str] | None = None) -> int:

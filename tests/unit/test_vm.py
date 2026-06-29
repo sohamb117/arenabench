@@ -94,6 +94,28 @@ def test_build_argv_constructs_x86_64_tcg_command(tmp_path: Path) -> None:
     assert not any("pflash" in token for token in argv)
 
 
+def test_build_argv_omits_vsock_when_disabled(tmp_path: Path) -> None:
+    """SSH-only path on hosts without /dev/vhost-vsock must not crash QEMU at boot."""
+    cfg_dict = _cfg(tmp_path)
+    cfg = QemuConfig(
+        golden_image=cfg_dict.golden_image,
+        overlay_dir=cfg_dict.overlay_dir,
+        arch=cfg_dict.arch,
+        cid=cfg_dict.cid,
+        smp=cfg_dict.smp,
+        mem_mb=cfg_dict.mem_mb,
+        accel=cfg_dict.accel,
+        seed_iso=cfg_dict.seed_iso,
+        edk2_code=cfg_dict.edk2_code,
+        edk2_vars=cfg_dict.edk2_vars,
+        enable_vsock=False,
+    )
+
+    argv = QemuVm(cfg).build_argv()
+
+    assert not any("vhost-vsock" in token for token in argv)
+
+
 def test_create_overlay_calls_qemu_img(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
 

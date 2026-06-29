@@ -14,6 +14,7 @@ _MAX_DURATION = 1800
 _ARCHIVE_GRACE = 60
 _CPU_QUOTA = 500
 _MEM_MB = 1024
+_TEST_SSH_PUBKEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey arenabench-test"
 
 
 def _match_config(
@@ -49,7 +50,9 @@ def test_happy_2_agents_renders_users_and_lingers() -> None:
     cfg = _match_config(n_agents=2)
     cb, pb = _blobs(2)
 
-    out = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
 
     assert out.startswith("#cloud-config")
     assert "name: agent0" in out
@@ -57,13 +60,18 @@ def test_happy_2_agents_renders_users_and_lingers() -> None:
     assert "loginctl enable-linger agent0" in out
     assert "loginctl enable-linger agent1" in out
     assert "arenabench-harness.service" in out
+    assert _TEST_SSH_PUBKEY in out
+    assert "ssh_pwauth: false" in out
+    assert "name: root" in out
 
 
 def test_happy_4_agents_all_blocks_present() -> None:
     cfg = _match_config(n_agents=4)
     cb, pb = _blobs(4)
 
-    out = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
 
     for i in range(4):
         assert f"name: agent{i}" in out
@@ -74,7 +82,9 @@ def test_network_policy_full_flushes_iptables() -> None:
     cfg = _match_config(n_agents=2, network_policy="full")
     cb, pb = _blobs(2)
 
-    out = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
 
     assert "iptables -F" in out
     assert "iptables -P INPUT ACCEPT" in out
@@ -84,7 +94,9 @@ def test_network_policy_allowlist_no_flush() -> None:
     cfg = _match_config(n_agents=2)
     cb, pb = _blobs(2)
 
-    out = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
 
     assert "iptables -F" not in out
 
@@ -96,7 +108,9 @@ def test_cgroup_limits_emits_drop_in() -> None:
     )
     cb, pb = _blobs(2)
 
-    out = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
 
     assert f"CPUQuota={_CPU_QUOTA}ms/s" in out
     assert f"MemoryMax={_MEM_MB}M" in out
@@ -106,7 +120,9 @@ def test_no_cgroup_limits_no_drop_in() -> None:
     cfg = _match_config(n_agents=2)
     cb, pb = _blobs(2)
 
-    out = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
 
     assert "CPUQuota" not in out
     assert "MemoryMax" not in out
@@ -118,7 +134,9 @@ def test_missing_prompt_blob_raises_config_error() -> None:
     pb = {0: "prompt0"}
 
     with pytest.raises(ConfigError) as exc_info:
-        render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+        render_user_data(
+            match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+        )
 
     assert exc_info.value.field == "prompt_blobs[1]"
 
@@ -129,7 +147,9 @@ def test_missing_config_blob_raises_config_error() -> None:
     pb = {0: "p0", 1: "p1"}
 
     with pytest.raises(ConfigError) as exc_info:
-        render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+        render_user_data(
+            match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+        )
 
     assert exc_info.value.field == "config_blobs[1]"
 
@@ -141,7 +161,9 @@ def test_missing_config_blob_raises_config_error() -> None:
 def test_seed_iso_smoke(tmp_path: pathlib.Path) -> None:
     cfg = _match_config(n_agents=2)
     cb, pb = _blobs(2)
-    user_data = render_user_data(match_config=cfg, config_blobs=cb, prompt_blobs=pb)
+    user_data = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
     out_iso = tmp_path / "seed.iso"
 
     write_seed_iso(user_data=user_data, out_path=out_iso)
