@@ -1,0 +1,16 @@
+{
+  "match_id": "demo-4ffa",
+  "n_agents": 4,
+  "heartbeat_interval_s": 120,
+  "grace_period_s": 30,
+  "max_duration_s": 1800,
+  "archive_grace_s": 60,
+  "network_policy": "allowlist",
+  "cgroup_limits": null,
+  "agents": [
+    { "slot": 0, "user": "agent0", "config": "configs/agents/claude-sonnet.json" },
+    { "slot": 1, "user": "agent1", "config": "configs/agents/gpt-4o.json" },
+    { "slot": 2, "user": "agent2", "config": "configs/agents/claude-sonnet.json" },
+    { "slot": 3, "user": "agent3", "config": "configs/agents/gpt-4o.json" }
+  ]
+}
