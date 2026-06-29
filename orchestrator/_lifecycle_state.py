@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Protocol, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 from common.ids import AgentSlot
-from common.protocol import Envelope
+from common.protocol import Envelope, Frame, Kill0, Kill0Response
 from orchestrator.heartbeat_scheduler import AgentSchedulerState
 from orchestrator.liveness import AgentLivenessState, LivenessThresholds
 from orchestrator.logger import MatchLogger
@@ -103,3 +103,39 @@ class AgentState:
             last_heartbeat_ts_monotonic=self.last_heartbeat_ts,
             llm_call_in_flight=self.llm_call_start_ts is not None,
         )
+
+
+_MkEnv = Callable[[str, Frame], Envelope]
+
+
+def poll_kill0_responses(
+    ctx: MatchContext,
+    agents: dict[int, AgentState],
+    mk_env: _MkEnv,
+    now: float,
+) -> None:
+    """Send kill0 probes for known PIDs + drain responses; updates agents in place.
+
+    Extracted from lifecycle.run_match's main loop so the file stays under the
+    250 LOC cap; the orchestrator otherwise sends one kill0 per known agent
+    pid every poll tick and updates AgentState.kill0_{alive,ts} from each
+    matching response.
+    """
+    if not any(st.pid is not None for st in agents.values()):
+        return
+    for st in agents.values():
+        if st.pid is not None:
+            ctx.vsock_server.send_frame(
+                ctx.guest_probe_port,
+                mk_env("kill0", Kill0(request_id=f"k_{st.slot}", pid=st.pid)),
+            )
+    while True:
+        resp = ctx.vsock_server.recv_frame(ctx.guest_probe_port, 0)
+        if not resp:
+            break
+        if resp.kind == "kill0_response" and isinstance(resp.data, Kill0Response):
+            ctx.logger.write_envelope(resp)
+            for st in agents.values():
+                if st.pid == resp.data.pid:
+                    st.kill0_alive = resp.data.alive
+                    st.kill0_ts = now

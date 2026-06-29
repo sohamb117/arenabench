@@ -8,8 +8,6 @@ from common.protocol import (
     Frame,
     HarnessDead,
     HeartbeatTick,
-    Kill0,
-    Kill0Response,
     MatchStateChange,
     MatchTerminated,
     PidAnnounce,
@@ -20,6 +18,7 @@ from orchestrator._lifecycle_state import (
     MatchContext,
     MatchOutcome,
     build_outcome,
+    poll_kill0_responses,
 )
 
 __all__ = ["MatchContext", "MatchOutcome", "run_match"]
@@ -54,9 +53,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         alive_at_timeout: list[int] | None = None,
         total_duration_s: float | None = None,
     ) -> MatchOutcome:
-        winner_pid: int | None = None
-        if winner_slot is not None and winner_slot in agents_ref:
-            winner_pid = agents_ref[winner_slot].pid
+        winner_pid = agents[winner_slot].pid if winner_slot in agents else None
         out = build_outcome(
             result,
             winner_slot,
@@ -74,7 +71,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         ctx.logger.close()
         return out
 
-    agents_ref: dict[int, AgentState] = {}
+    agents: dict[int, AgentState] = {}
 
     transition("VM_BOOTING", "run_match_called")
 
@@ -101,11 +98,8 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
     start_ts = ctx.clock()
     now = ctx.clock()
 
-    agents = {
-        slot: AgentState(slot=slot, last_frame_ts=now, last_heartbeat_ts=now, kill0_ts=now)
-        for slot in range(ctx.match_config.n_agents)
-    }
-    agents_ref.update(agents)
+    for slot in range(ctx.match_config.n_agents):
+        agents[slot] = AgentState(slot=slot, last_frame_ts=now, last_heartbeat_ts=now, kill0_ts=now)
 
     announced: set[int] = set()
     while ctx.clock() - start_ts < prov_timeout_s and len(announced) < ctx.match_config.n_agents:
@@ -156,24 +150,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
             if st.vsock_connected and not ctx.vsock_server.is_open(port):
                 st.vsock_connected = False
 
-        has_pids = any(st.pid is not None for st in agents.values())
-        if has_pids:
-            for st in agents.values():
-                if st.pid is not None:
-                    ctx.vsock_server.send_frame(
-                        ctx.guest_probe_port,
-                        mk_env("kill0", Kill0(request_id=f"k_{st.slot}", pid=st.pid)),
-                    )
-            while True:
-                resp = ctx.vsock_server.recv_frame(ctx.guest_probe_port, 0)
-                if not resp:
-                    break
-                if resp.kind == "kill0_response" and isinstance(resp.data, Kill0Response):
-                    ctx.logger.write_envelope(resp)
-                    for st in agents.values():
-                        if st.pid == resp.data.pid:
-                            st.kill0_alive = resp.data.alive
-                            st.kill0_ts = now
+        poll_kill0_responses(ctx, agents, mk_env, now)
 
         for slot, port in ctx.agent_ports.items():
             st = agents[slot]
