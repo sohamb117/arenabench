@@ -8,6 +8,6 @@
   "parser": "json",
   "api_key_env": "ARENABENCH_NO_KEY_NEEDED",
   "system_prompt_path": "configs/prompts/passive.txt",
-  "mock_response": "{\"analysis\":\"self-kill for S11/S3 testing\",\"plan\":\"kill -9 self\",\"commands\":[{\"keystrokes\":\"kill -9 $$\\n\",\"duration_sec\":1.0,\"is_blocking\":true}],\"task_complete\":false}",
+  "mock_response": "{\"analysis\":\"self-kill harness process\",\"plan\":\"SIGKILL the harness Python PID\",\"commands\":[{\"keystrokes\":\"pgrep -u $(id -u) -f '[p]ython3 -m harness' | xargs -r kill -9\\n\",\"duration_sec\":1.0,\"is_blocking\":true}],\"task_complete\":false}",
   "mock_raise_on_turn": null
 }

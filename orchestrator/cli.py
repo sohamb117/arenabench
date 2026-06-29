@@ -3,10 +3,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Literal, cast
 
@@ -20,6 +18,7 @@ from orchestrator._cli_helpers import (
     ensure_ssh_keypair,
     load_agent_blobs,
     resolve_agent_env_vars,
+    wait_for_ssh_ready,
 )
 from orchestrator.cloudinit import render_user_data, write_seed_iso
 from orchestrator.lifecycle import MatchContext, MatchOutcome, run_match
@@ -170,7 +169,13 @@ def _drive_match(
     try:
         vm.create_overlay()
         vm.start()
-        _wait_for_ssh("127.0.0.1", _SSH_HOST_PORT, _SSH_READY_TIMEOUT_S)
+        wait_for_ssh_ready(
+            host="127.0.0.1",
+            port=_SSH_HOST_PORT,
+            key_path=key_path,
+            agents=list(config.agents),
+            deadline_s=_SSH_READY_TIMEOUT_S,
+        )
         server.start()
         ctx = MatchContext(
             match_config=config,
@@ -187,17 +192,6 @@ def _drive_match(
         server.stop()
         vm.terminate()
         vm.cleanup()
-
-
-def _wait_for_ssh(host: str, port: int, timeout_s: float) -> None:
-    deadline = now_monotonic_s() + timeout_s
-    while now_monotonic_s() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=1.0):
-                return
-        except OSError:
-            time.sleep(1.0)
-    raise TimeoutError(f"ssh on {host}:{port} not reachable within {timeout_s}s")
 
 
 def _copy_pflash_vars(src: Path, overlay_dir: Path) -> Path:
