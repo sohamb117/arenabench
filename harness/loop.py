@@ -178,17 +178,26 @@ def _llm_turn(
     chat.trim_to_fit()
     request_id = f"llm-{state.turn}-{uuid.uuid4().hex[:_ID_BYTES]}"
     messages = helpers.chat_history_for_litellm(chat)
-    state.emit(
-        proto.LlmRequest(
-            turn=state.turn,
-            request_id=request_id,
-            model=cfg.model,
-            messages_count=len(messages),
-            prompt_chars=sum(len(message["content"]) for message in messages),
-            temperature=cfg.temperature,
-            last_user_excerpt=_last_user_excerpt(messages),
+    prompt_chars = sum(len(message["content"]) for message in messages)
+    last_excerpt = _last_user_excerpt(messages)
+
+    def _emit_attempt(attempt: int) -> None:
+        # Plan §9 S16: one llm_request per attempt (same request_id), so a
+        # retry on 429 / 5xx / timeout is visible in api.jsonl as two frames
+        # for the same turn rather than being collapsed inside the harness.
+        state.emit(
+            proto.LlmRequest(
+                turn=state.turn,
+                request_id=request_id,
+                model=cfg.model,
+                messages_count=len(messages),
+                prompt_chars=prompt_chars,
+                temperature=cfg.temperature,
+                last_user_excerpt=last_excerpt,
+                attempt=attempt,
+            )
         )
-    )
+
     result = llm.call(
         model=cfg.model,
         messages=messages,
@@ -199,6 +208,7 @@ def _llm_turn(
         fallbacks=cfg.fallbacks,
         api_key=api_key,
         mock_response=cfg.mock_response,
+        on_attempt=_emit_attempt,
     )
     parsed = helpers.parse_or_record_error(
         result, cfg.parser, state.turn, request_id, state.emit, chat

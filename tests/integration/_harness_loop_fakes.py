@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, cast
@@ -122,6 +122,9 @@ def run_harness_thread(
     calls = iter(responses)
 
     def fake_call(**kwargs: object) -> LlmCallResult:
+        on_attempt = kwargs.get("on_attempt")
+        if on_attempt is not None:
+            cast(Callable[[int], None], on_attempt)(0)
         messages_obj = kwargs.get("messages")
         if isinstance(messages_obj, list):
             snapshot: list[dict[str, str]] = []

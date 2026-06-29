@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -81,6 +82,7 @@ def call(
     fallbacks: list[str] | None,
     api_key: str | None = None,
     mock_response: str | None = None,
+    on_attempt: Callable[[int], None] | None = None,
 ) -> LlmCallResult:
     """
     Single LiteLLM completion call. Times out after timeout_s; retries
@@ -89,9 +91,16 @@ def call(
 
     When mock_response is set, returns it directly without hitting any real
     LLM API. Used by deterministic e2e fixtures (plan §9 S15/S17 fake-LLM).
+
+    `on_attempt(attempt_index)` fires immediately BEFORE each network attempt
+    (attempt_index starts at 0). Plan §9 S16 binary observable: an external
+    caller (harness loop) emits one `llm_request` frame per attempt so retry
+    count is observable in api.jsonl without parsing harness logs.
     """
     started = now_monotonic_s()
     if mock_response is not None:
+        if on_attempt is not None:
+            on_attempt(0)
         return LlmCallResult(
             content=mock_response,
             prompt_tokens=0,
@@ -103,7 +112,9 @@ def call(
         )
     completion = cast(_LiteLlmCompletion, litellm.completion)
     last_retryable: Exception | None = None
-    for _attempt in range(max(1, num_retries)):
+    for attempt in range(max(1, num_retries)):
+        if on_attempt is not None:
+            on_attempt(attempt)
         try:
             if api_key is None:
                 raw_response = completion(

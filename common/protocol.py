@@ -10,14 +10,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    TypeAdapter,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 MAX_FRAME_BYTES = 64 * 1024
 _MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True)
@@ -71,6 +64,7 @@ class LlmRequest(_Frame):
     prompt_chars: int
     temperature: float
     last_user_excerpt: str = ""
+    attempt: int = 0
 
 
 class LlmResponse(_Frame):
