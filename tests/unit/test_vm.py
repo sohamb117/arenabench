@@ -1,0 +1,232 @@
+import os
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Literal
+
+import pytest
+
+from common.errors import LifecycleError
+from orchestrator.vm import QemuConfig, QemuVm, detect_accel
+
+_Arch = Literal["aarch64", "x86_64"]
+
+SMP = 4
+MEM_MB = 4096
+CID = 42
+TERM_TIMEOUT_S = 0.01
+E2E_RUNTIME_S = 30.0
+
+
+class FakeQemuProcess:
+    def __init__(self, exit_after_wait: int | None = None) -> None:
+        self.pid = 1234
+        self._returncode: int | None = None
+        self._exit_after_wait = exit_after_wait
+        self.terminated = False
+        self.killed = False
+        self.wait_timeouts: list[float | None] = []
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
+        self._returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_timeouts.append(timeout)
+        if self._returncode is not None:
+            return self._returncode
+        if self._exit_after_wait is None:
+            raise subprocess.TimeoutExpired(cmd="qemu", timeout=0.0 if timeout is None else timeout)
+        self._returncode = self._exit_after_wait
+        return self._returncode
+
+
+def _cfg(tmp_path: Path, arch: _Arch = "aarch64") -> QemuConfig:
+    return QemuConfig(
+        golden_image=tmp_path / "golden.qcow2",
+        overlay_dir=tmp_path / "overlay",
+        arch=arch,
+        smp=SMP,
+        mem_mb=MEM_MB,
+        accel="hvf" if arch == "aarch64" else "tcg",
+        cid=CID,
+        seed_iso=tmp_path / "seed.iso",
+        edk2_code=tmp_path / "edk2-code.fd",
+        edk2_vars=tmp_path / "edk2-vars.fd",
+    )
+
+
+def test_build_argv_constructs_aarch64_hvf_command(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    vm = QemuVm(cfg)
+    overlay = vm.create_overlay_path()
+
+    argv = vm.build_argv()
+
+    assert argv[0] == "qemu-system-aarch64"
+    assert argv[argv.index("-machine") + 1] == "virt,accel=hvf"
+    assert argv[argv.index("-cpu") + 1] == "host"
+    assert str(SMP) == argv[argv.index("-smp") + 1]
+    assert str(MEM_MB) == argv[argv.index("-m") + 1]
+    assert f"if=pflash,format=raw,readonly=on,file={cfg.edk2_code}" in argv
+    assert f"if=pflash,format=raw,file={cfg.edk2_vars}" in argv
+    assert f"if=none,file={overlay},format=qcow2,id=disk0" in argv
+    assert f"if=none,file={cfg.seed_iso},format=raw,media=cdrom,id=seed0" in argv
+    assert "vhost-vsock-pci,guest-cid=42" in argv
+    assert "virtio-net-pci,netdev=net0" in argv
+
+
+def test_build_argv_constructs_x86_64_tcg_command(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, arch="x86_64")
+    vm = QemuVm(cfg)
+
+    argv = vm.build_argv()
+
+    assert argv[0] == "qemu-system-x86_64"
+    assert argv[argv.index("-machine") + 1] == "pc,accel=tcg"
+    assert argv[argv.index("-cpu") + 1] == "max"
+    assert not any("pflash" in token for token in argv)
+
+
+def test_create_overlay_calls_qemu_img(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], *, check: bool) -> SimpleNamespace:
+        calls.append(argv)
+        assert check is True
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    cfg = _cfg(tmp_path)
+
+    overlay = QemuVm(cfg).create_overlay()
+
+    assert calls == [
+        [
+            "qemu-img",
+            "create",
+            "-f",
+            "qcow2",
+            "-F",
+            "qcow2",
+            "-b",
+            str(cfg.golden_image),
+            str(overlay),
+        ]
+    ]
+
+
+def test_start_calls_popen_with_constructed_argv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_calls: list[list[str]] = []
+    fake_process = FakeQemuProcess()
+
+    def fake_popen(argv: list[str]) -> FakeQemuProcess:
+        popen_calls.append(argv)
+        return fake_process
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    vm = QemuVm(_cfg(tmp_path))
+
+    vm.start()
+
+    assert popen_calls == [vm.build_argv()]
+    assert vm.pid == fake_process.pid
+
+
+def test_terminate_sends_sigterm_then_sigkill(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake_process = FakeQemuProcess()
+
+    def fake_popen(argv: list[str]) -> FakeQemuProcess:
+        return fake_process
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    vm = QemuVm(_cfg(tmp_path))
+    vm.start()
+
+    vm.terminate(grace_s=TERM_TIMEOUT_S)
+
+    assert fake_process.terminated is True
+    assert fake_process.killed is True
+    assert fake_process.wait_timeouts == [TERM_TIMEOUT_S, None]
+
+
+def test_cleanup_deletes_overlay_idempotently(tmp_path: Path) -> None:
+    vm = QemuVm(_cfg(tmp_path))
+    overlay = vm.create_overlay_path()
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text("qcow2")
+
+    vm.cleanup()
+    vm.cleanup()
+
+    assert not overlay.exists()
+
+
+def test_detect_accel_returns_hvf_when_sysctl_reports_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        argv: list[str], *, check: bool, capture_output: bool, text: bool
+    ) -> SimpleNamespace:
+        assert argv == ["sysctl", "-n", "kern.hv_support"]
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        return SimpleNamespace(returncode=0, stdout="1\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert detect_accel() == "hvf"
+
+
+def test_detect_accel_returns_tcg_otherwise(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(
+        argv: list[str], *, check: bool, capture_output: bool, text: bool
+    ) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert detect_accel() == "tcg"
+
+
+def test_wait_without_start_raises(tmp_path: Path) -> None:
+    with pytest.raises(LifecycleError) as exc:
+        QemuVm(_cfg(tmp_path)).wait(timeout_s=TERM_TIMEOUT_S)
+
+    assert exc.value.state == "stopped"
+    assert exc.value.event == "wait"
+
+
+@pytest.mark.e2e
+def test_boots_real_golden_image(tmp_path: Path) -> None:
+    if os.environ.get("ARENABENCH_E2E") != "1":
+        pytest.skip("set ARENABENCH_E2E=1 and GOLDEN_IMAGE to boot a real VM")
+    golden = os.environ.get("GOLDEN_IMAGE")
+    if golden is None:
+        pytest.skip("GOLDEN_IMAGE is required for QEMU e2e")
+    cfg = QemuConfig(
+        golden_image=Path(golden),
+        overlay_dir=tmp_path,
+        arch="aarch64",
+        accel=detect_accel(),
+        cid=CID,
+    )
+    vm = QemuVm(cfg)
+    vm.create_overlay()
+    vm.start()
+    try:
+        vm.wait(timeout_s=E2E_RUNTIME_S)
+    finally:
+        vm.terminate(grace_s=TERM_TIMEOUT_S)
+        vm.cleanup()
