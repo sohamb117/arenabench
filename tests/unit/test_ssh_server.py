@@ -105,10 +105,18 @@ def test_agent_env_vars_propagate_to_per_slot_ssh_configs() -> None:
 
 
 def test_probe_remote_command_uses_stdio_flag() -> None:
-    """Gap-2 lock: probe transport must invoke `vm.guest_probe --stdio`."""
+    """Gap-2 lock: probe transport must invoke `vm.guest_probe --stdio`.
+
+    Round-6 follow-up: must use the in-guest 3.12 venv interpreter, not /usr/bin/python3.
+    """
     configs = build_transport_configs(agents=_agents(1), ssh_host=SSH_HOST, ssh_port=SSH_PORT)
 
-    assert configs[PROBE_PORT].remote_command == ("python3", "-m", "vm.guest_probe", "--stdio")
+    assert configs[PROBE_PORT].remote_command == (
+        "/opt/arenabench-venv/bin/python3",
+        "-m",
+        "vm.guest_probe",
+        "--stdio",
+    )
 
 
 def test_key_path_propagates_to_all_transports() -> None:

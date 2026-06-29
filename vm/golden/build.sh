@@ -27,8 +27,17 @@ GOLDEN_PATH="$IMAGES_DIR/$GOLDEN_NAME"
 MANIFEST_PATH="$IMAGES_DIR/MANIFEST.json"
 
 case "$ARCH" in
-    aarch64) BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64-${DEBIAN_RELEASE}.qcow2" ;;
-    amd64)   BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-amd64-${DEBIAN_RELEASE}.qcow2" ;;
+    aarch64)
+        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64-${DEBIAN_RELEASE}.qcow2"
+        QEMU_BIN="qemu-system-aarch64"
+        MACHINE_TYPE="virt"
+        ;;
+    amd64|x86_64)
+        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-amd64-${DEBIAN_RELEASE}.qcow2"
+        QEMU_BIN="qemu-system-x86_64"
+        MACHINE_TYPE="q35"
+        ARCH="amd64"
+        ;;
     *)       echo "ERROR: unsupported ARENABENCH_ARCH=$ARCH (use aarch64 or amd64)" >&2; exit 1 ;;
 esac
 
@@ -103,8 +112,17 @@ cp "$BASE_PATH" "$GOLDEN_PATH.tmp"
 qemu-img resize "$GOLDEN_PATH.tmp" 10G
 
 echo ">>> first boot to run customize.sh (may take 5–15 min on Apple Silicon TCG)"
-QEMU_BIN="qemu-system-${ARCH}"
-"$QEMU_BIN" -machine virt,accel=hvf -cpu host -smp 2 -m 2048 -nographic \
+# Try hardware accel (HVF on macOS, KVM on Linux); fall back to TCG so the build
+# script works in CI / non-virtualized hosts. QEMU exits when shutdown -h runs.
+if "$QEMU_BIN" -accel help 2>/dev/null | grep -q '^hvf$'; then
+    ACCEL="hvf"
+elif "$QEMU_BIN" -accel help 2>/dev/null | grep -q '^kvm$'; then
+    ACCEL="kvm"
+else
+    ACCEL="tcg"
+fi
+echo "    qemu binary: $QEMU_BIN  machine: $MACHINE_TYPE  accel: $ACCEL"
+"$QEMU_BIN" -machine "$MACHINE_TYPE,accel=$ACCEL" -cpu host -smp 2 -m 2048 -nographic \
     -drive if=none,file="$GOLDEN_PATH.tmp",format=qcow2,id=disk0 -device virtio-blk-pci,drive=disk0 \
     -drive if=none,file="$TMP/seed.iso",format=raw,media=cdrom,id=seed0 -device scsi-cd,drive=seed0 \
     -device virtio-scsi-pci \

@@ -85,7 +85,7 @@ class MatchLogger:
         return make_agent_slot(int(slot_text))
 
     def _file_for_envelope(self, env: Envelope) -> TextIO:
-        if env.src in {"orchestrator", "guest-probe"}:
+        if env.src in {"orchestrator", "guest_probe"}:
             return self._match_handle
         slot = self._agent_slot(env.src)
         files = self._agent_files.get(slot)

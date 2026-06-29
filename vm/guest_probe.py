@@ -119,9 +119,10 @@ def serve(listener: socket.socket, our_cid: int = 0) -> None:
         return
     while True:
         try:
-            conn, _ = listener.accept()
+            accepted: tuple[socket.socket, object] = listener.accept()
         except OSError:
             return
+        conn = accepted[0]
         with conn:
             _serve_conn(conn)
 

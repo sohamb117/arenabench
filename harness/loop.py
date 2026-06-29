@@ -140,6 +140,17 @@ def _handle_inbound(env: proto.Envelope, chat: Chat, state: _State) -> int | Non
     return None
 
 
+_LAST_USER_EXCERPT_MAX = 512
+
+
+def _last_user_excerpt(messages: list[dict[str, str]]) -> str:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            content = message.get("content", "")
+            return content[:_LAST_USER_EXCERPT_MAX]
+    return ""
+
+
 def _llm_turn(
     state: _State, chat: Chat, tmux: shell.TmuxShell, cfg: config.AgentConfig, api_key: str
 ) -> parser.ParsedResponse | None:
@@ -156,6 +167,7 @@ def _llm_turn(
             messages_count=len(messages),
             prompt_chars=sum(len(message["content"]) for message in messages),
             temperature=cfg.temperature,
+            last_user_excerpt=_last_user_excerpt(messages),
         )
     )
     result = llm.call(

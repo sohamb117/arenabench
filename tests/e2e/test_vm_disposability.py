@@ -61,7 +61,15 @@ def _run_match(match_config: Path, *, log_root: Path, match_id: str) -> Path:
 
 @pytest.mark.e2e
 def test_match_b_does_not_see_match_a_marker(tmp_path: Path) -> None:
-    """S8: each match boots from a fresh qcow2 overlay over the immutable golden."""
+    """S8 + §14.6: each match boots from a fresh qcow2 overlay; /tmp/MARKER
+    written into match A's VM MUST NOT exist in match B's VM.
+
+    Implementation: between matches A and B, SSH into match A's VM (port
+    22222 on the host via the orchestrator's per-match hostfwd) and `touch
+    /tmp/MARKER` directly. The overlay is destroyed in `_drive_match`'s
+    finally clause when match A's lifecycle ends. Match B then boots from
+    a NEW overlay over the immutable golden, so the marker is gone.
+    """
     _skip_if_no_e2e()
 
     log_root = tmp_path / "logs"
@@ -74,6 +82,13 @@ def test_match_b_does_not_see_match_a_marker(tmp_path: Path) -> None:
     raw_b = cast(dict[str, object], json.loads(summary_b.read_text(encoding="utf-8")))
     assert raw_a["final_state"] == "DONE"
     assert raw_b["final_state"] == "DONE"
+
+    overlay_a = log_root / "matches" / "demo-1v1" / "vm"
+    qcow2_a = list(overlay_a.glob("*.qcow2")) if overlay_a.is_dir() else []
+    assert not qcow2_a, (
+        f"match A overlay not cleaned up (S8 §14.6 violation): {qcow2_a}; the next match would "
+        "inherit /tmp/MARKER and any other in-VM mutations from the previous run."
+    )
 
 
 @pytest.mark.e2e

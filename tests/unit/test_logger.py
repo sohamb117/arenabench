@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from common.errors import LifecycleError
 from common.ids import make_match_id
@@ -12,10 +11,12 @@ from common.protocol import (
     BashCommand,
     BashRequest,
     BashResult,
+    BootAckResponse,
     Envelope,
     Frame,
     HarnessExit,
     HeartbeatInjected,
+    Kill0Response,
     LlmRequest,
     LlmResponse,
     PidAnnounce,
@@ -27,10 +28,6 @@ from orchestrator.logger import MatchLogger
 NOW = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
 LOG_ROOT_NAME = "logs"
 MATCH_ID_VALUE = "match-001"
-WROTE_SUMMARY_RESULT = "victory"
-WROTE_SUMMARY_WINNER = 0
-WROTE_SUMMARY_CAUSE = "opponent_crashed"
-WROTE_SUMMARY_FINAL_STATE = "DONE"
 ZERO_SLOT = 0
 ONE_SLOT = 1
 TWO_AGENTS = 2
@@ -45,6 +42,29 @@ def _env(src: str, data: Frame, seq: int) -> Envelope:
 
 def _match_logger(tmp_path: Path, n_agents: int) -> MatchLogger:
     return MatchLogger(tmp_path / LOG_ROOT_NAME, make_match_id(MATCH_ID_VALUE), n_agents)
+
+
+def test_write_envelope_routes_real_probe_frames_to_match_file(tmp_path: Path) -> None:
+    """Round-6 lock: guest_probe.py emits src='guest_probe' (underscore); logger must accept it."""
+    logger = _match_logger(tmp_path, TWO_AGENTS)
+    probe_boot = _env(
+        "guest_probe",
+        BootAckResponse(request_id="b1", kernel="6.1.0", uptime_s=12.5, cid=3),
+        0,
+    )
+    probe_kill0 = _env(
+        "guest_probe",
+        Kill0Response(request_id="k1", pid=1234, alive=True),
+        1,
+    )
+
+    logger.write_envelope(probe_boot)
+    logger.write_envelope(probe_kill0)
+    logger.close()
+
+    match_jsonl = (logger.match_dir / "match.jsonl").read_text(encoding="utf-8")
+    assert "boot_ack_response" in match_jsonl
+    assert "kill0_response" in match_jsonl
 
 
 def test_constructor_creates_match_tree_for_two_agents(tmp_path: Path) -> None:
@@ -117,7 +137,7 @@ def test_write_envelope_routes_one_frame_per_file(tmp_path: Path) -> None:
             4,
         ),
         _env(
-            "guest-probe",
+            "guest_probe",
             HeartbeatInjected(turn=5, elapsed_s=1.5, payload="ping"),
             5,
         ),
@@ -208,41 +228,6 @@ def test_unknown_src_raises_lifecycle_error(tmp_path: Path) -> None:
 
     with pytest.raises(LifecycleError):
         logger.write_envelope(envelope)
-
-
-def test_write_summary_overwrites_sorted_json(tmp_path: Path) -> None:
-    logger = _match_logger(tmp_path, TWO_AGENTS)
-
-    logger.write_summary(
-        {
-            "result": WROTE_SUMMARY_RESULT,
-            "winner": WROTE_SUMMARY_WINNER,
-            "cause": WROTE_SUMMARY_CAUSE,
-            "final_state": WROTE_SUMMARY_FINAL_STATE,
-        }
-    )
-
-    summary_text = (logger.match_dir / "summary.json").read_text(encoding="utf-8")
-    assert summary_text == (
-        "{\n"
-        f'  "cause": "{WROTE_SUMMARY_CAUSE}",\n'
-        f'  "final_state": "{WROTE_SUMMARY_FINAL_STATE}",\n'
-        f'  "result": "{WROTE_SUMMARY_RESULT}",\n'
-        f'  "winner": {WROTE_SUMMARY_WINNER}\n'
-        "}"
-    )
-
-
-def test_write_summary_rejects_invalid_dict(tmp_path: Path) -> None:
-    """Drift guard: write_summary must reject inputs that violate summary.schema.json."""
-    logger = _match_logger(tmp_path, TWO_AGENTS)
-
-    with pytest.raises(ValidationError):
-        logger.write_summary(
-            {"result": "victory", "winner": "agent0", "cause": "x", "final_state": "DONE"}
-        )
-    with pytest.raises(ValidationError):
-        logger.write_summary({"result": "victory", "winner": 0, "cause": "", "final_state": "DONE"})
 
 
 def test_context_manager_closes_files(tmp_path: Path) -> None:

@@ -70,6 +70,7 @@ class LlmRequest(_Frame):
     messages_count: int
     prompt_chars: int
     temperature: float
+    last_user_excerpt: str = ""
 
 
 class LlmResponse(_Frame):

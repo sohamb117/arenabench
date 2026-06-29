@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import typer
 
@@ -77,8 +77,17 @@ def run_match_command(
     match_path: Path,
     log_root: Path = _DEFAULT_LOG_ROOT,
     golden_image: Path = _DEFAULT_GOLDEN,
+    arch: str = "aarch64",
 ) -> None:
-    """Run a match end-to-end. Requires a built golden image + LLM credentials."""
+    """Run a match end-to-end. Requires a built golden image + LLM credentials.
+
+    arch must be 'aarch64' or 'x86_64'. The default 'aarch64' golden image
+    path lives at vm/images/arenabench-golden-aarch64.qcow2; override
+    --golden-image when running x86_64.
+    """
+    if arch not in {"aarch64", "x86_64"}:
+        typer.echo(f"ERROR --arch must be 'aarch64' or 'x86_64', got {arch!r}", err=True)
+        raise typer.Exit(code=_EXIT_CONFIG_ERROR)
     try:
         config = load_match_config(match_path)
     except ConfigError as exc:
@@ -90,7 +99,8 @@ def run_match_command(
             err=True,
         )
         raise typer.Exit(code=_EXIT_RUNTIME_ERROR)
-    outcome = _drive_match(config, golden_image=golden_image, log_root=log_root)
+    qemu_arch = cast("Literal['aarch64', 'x86_64']", arch)
+    outcome = _drive_match(config, golden_image=golden_image, log_root=log_root, arch=qemu_arch)
     typer.echo(f"DONE result={outcome.result} winner={outcome.winner} cause={outcome.cause}")
 
 
@@ -106,7 +116,13 @@ def build_vm(arch: str = "aarch64") -> None:
     raise typer.Exit(code=result.returncode)
 
 
-def _drive_match(config: MatchConfig, *, golden_image: Path, log_root: Path) -> MatchOutcome:
+def _drive_match(
+    config: MatchConfig,
+    *,
+    golden_image: Path,
+    log_root: Path,
+    arch: Literal["aarch64", "x86_64"] = "aarch64",
+) -> MatchOutcome:
     log_root.mkdir(parents=True, exist_ok=True)
     match_id = make_match_id(config.match_id)
     logger = MatchLogger(log_root, match_id, config.n_agents)
@@ -123,11 +139,11 @@ def _drive_match(config: MatchConfig, *, golden_image: Path, log_root: Path) -> 
     )
     seed_iso = overlay_dir / "seed.iso"
     write_seed_iso(user_data=user_data, out_path=seed_iso)
-    edk2_code, edk2_vars = detect_edk2_pflash()
+    edk2_code, edk2_vars = detect_edk2_pflash() if arch == "aarch64" else (None, None)
     qemu_cfg = QemuConfig(
         golden_image=golden_image,
         overlay_dir=overlay_dir,
-        arch="aarch64",
+        arch=arch,
         cid=3,
         accel=detect_accel(),
         seed_iso=seed_iso,

@@ -42,7 +42,7 @@ write_files:
 
       [Service]
       Type=simple
-      ExecStart=/usr/bin/python3 -m harness /home/{{ agent.user }}/config.json
+      ExecStart=/opt/arenabench-venv/bin/python3 -m harness /home/{{ agent.user }}/config.json
       Restart=no
 
       [Install]

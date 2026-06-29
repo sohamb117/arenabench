@@ -54,7 +54,7 @@ select = [
 ignore = ["PLR0913"]
 
 [tool.basedpyright]
-include = ["common", "harness", "orchestrator", "tests"]
+include = ["common", "harness", "orchestrator", "tests", "vm"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 reportAny = "error"

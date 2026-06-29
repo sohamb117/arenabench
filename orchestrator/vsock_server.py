@@ -193,6 +193,9 @@ class VsockServer:
             raise TransportError("no active connection", port=port)
         conn.send(env)
 
+    def is_open(self, port: int) -> bool:
+        return port in self._conns
+
     def _accept_ready(self, port: int) -> None:
         conn = self._listeners[port].accept(0.0)
         if conn is None:

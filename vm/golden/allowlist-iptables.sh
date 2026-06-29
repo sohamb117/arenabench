@@ -38,11 +38,13 @@ iptables -P INPUT ACCEPT
 iptables -P FORWARD ACCEPT
 iptables -P OUTPUT DROP
 
-# Always-allow: loopback + established connections + DNS to localhost
+# Always-allow: loopback + established connections + outbound DNS (resolvers vary
+# per host — without this, getent hosts below and the agent's LLM HTTPS DNS
+# lookups both fail under iptables -P OUTPUT DROP).
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -p udp --dport 53 -d 127.0.0.0/8 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 53 -d 127.0.0.0/8 -j ACCEPT
+iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
 # Allow vsock traffic (kernel-internal; iptables doesn't filter it but be explicit)
 # (vsock is AF_VSOCK, not AF_INET — iptables rules don't apply.)

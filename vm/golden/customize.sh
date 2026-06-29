@@ -32,11 +32,16 @@ apt-get install -y --no-install-recommends \
 if ! command -v uv >/dev/null 2>&1; then
     curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh
 fi
-/usr/local/bin/uv python install 3.12 || true
+/usr/local/bin/uv python install 3.12
 
+# Create a 3.12 venv and install arenabench INTO IT — Debian 12 ships Python 3.11
+# but pyproject requires-python = ">=3.12". `uv pip install --system` would
+# target /usr/bin/python3 and fail metadata checks.
+ARENABENCH_VENV=${ARENABENCH_VENV:-/opt/arenabench-venv}
 ARENABENCH_PKG_DIR=${ARENABENCH_PKG_DIR:-/opt/arenabench}
 if [[ -d "$ARENABENCH_PKG_DIR" ]]; then
-    /usr/local/bin/uv pip install --system "$ARENABENCH_PKG_DIR"
+    /usr/local/bin/uv venv --python 3.12 "$ARENABENCH_VENV"
+    /usr/local/bin/uv pip install --python "$ARENABENCH_VENV/bin/python" "$ARENABENCH_PKG_DIR"
 else
     echo "WARN: $ARENABENCH_PKG_DIR not present; harness package not installed"
 fi

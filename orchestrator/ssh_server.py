@@ -24,6 +24,7 @@ from orchestrator.match_config import AgentEntry
 
 PROBE_PORT = 9999
 AGENT_PORT_BASE = 10000
+_GUEST_PYTHON = "/opt/arenabench-venv/bin/python3"
 
 
 def slot_to_port(slot: int) -> int:
@@ -66,7 +67,7 @@ def build_transport_configs(
         user=probe_user,
         key_path=key_path,
         connect_timeout_s=connect_timeout_s,
-        remote_command=("python3", "-m", "vm.guest_probe", "--stdio"),
+        remote_command=(_GUEST_PYTHON, "-m", "vm.guest_probe", "--stdio"),
     )
     return configs
 
@@ -118,6 +119,12 @@ class SshOrchestratorServer:
         if port not in self._transports:
             raise TransportError(f"unknown port {port}")
         self._transports[port].send(env)
+
+    def is_open(self, port: int) -> bool:
+        transport = self._transports.get(port)
+        if transport is None:
+            return False
+        return transport.is_open()
 
     @property
     def agent_ports(self) -> dict[int, int]:

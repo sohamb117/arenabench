@@ -33,10 +33,18 @@ class FakeVsockServer:
         self.outbound: dict[int, list[Envelope]] = {}
         self.auto_kill0: bool = True
         self.dead_pids: set[int] = set()
+        self.closed_ports: set[int] = set()
 
     def mark_dead(self, pid: int) -> None:
         """Cause subsequent auto_kill0 responses for this pid to report alive=False."""
         self.dead_pids.add(pid)
+
+    def close_port(self, port: int) -> None:
+        """Simulate the transport for `port` dropping (ssh subprocess death)."""
+        self.closed_ports.add(port)
+
+    def is_open(self, port: int) -> bool:
+        return port not in self.closed_ports
 
     def schedule(self, delay_s: float, port: int, env: Envelope) -> None:
         self.scheduled.append((self.clock.now + delay_s, port, env))

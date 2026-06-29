@@ -136,6 +136,8 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                         transition("IN_MATCH", "first_llm_response")
                 elif env.kind == "harness_exit":
                     st.vsock_connected = False
+            if st.vsock_connected and not ctx.vsock_server.is_open(port):
+                st.vsock_connected = False
 
         has_pids = any(st.pid is not None for st in agents.values())
         if has_pids:

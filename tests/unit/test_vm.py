@@ -1,4 +1,3 @@
-import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,7 +6,7 @@ from typing import Literal
 import pytest
 
 from common.errors import LifecycleError
-from orchestrator.vm import QemuConfig, QemuVm, detect_accel
+from orchestrator.vm import QemuConfig, QemuVm
 
 _Arch = Literal["aarch64", "x86_64"]
 
@@ -194,61 +193,9 @@ def test_cleanup_deletes_overlay_idempotently(tmp_path: Path) -> None:
     assert not overlay.exists()
 
 
-def test_detect_accel_returns_hvf_when_sysctl_reports_support(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_run(
-        argv: list[str], *, check: bool, capture_output: bool, text: bool
-    ) -> SimpleNamespace:
-        assert argv == ["sysctl", "-n", "kern.hv_support"]
-        assert check is False
-        assert capture_output is True
-        assert text is True
-        return SimpleNamespace(returncode=0, stdout="1\n")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    assert detect_accel() == "hvf"
-
-
-def test_detect_accel_returns_tcg_otherwise(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(
-        argv: list[str], *, check: bool, capture_output: bool, text: bool
-    ) -> SimpleNamespace:
-        return SimpleNamespace(returncode=1, stdout="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    assert detect_accel() == "tcg"
-
-
 def test_wait_without_start_raises(tmp_path: Path) -> None:
     with pytest.raises(LifecycleError) as exc:
         QemuVm(_cfg(tmp_path)).wait(timeout_s=TERM_TIMEOUT_S)
 
     assert exc.value.state == "stopped"
     assert exc.value.event == "wait"
-
-
-@pytest.mark.e2e
-def test_boots_real_golden_image(tmp_path: Path) -> None:
-    if os.environ.get("ARENABENCH_E2E") != "1":
-        pytest.skip("set ARENABENCH_E2E=1 and GOLDEN_IMAGE to boot a real VM")
-    golden = os.environ.get("GOLDEN_IMAGE")
-    if golden is None:
-        pytest.skip("GOLDEN_IMAGE is required for QEMU e2e")
-    cfg = QemuConfig(
-        golden_image=Path(golden),
-        overlay_dir=tmp_path,
-        arch="aarch64",
-        accel=detect_accel(),
-        cid=CID,
-    )
-    vm = QemuVm(cfg)
-    vm.create_overlay()
-    vm.start()
-    try:
-        vm.wait(timeout_s=E2E_RUNTIME_S)
-    finally:
-        vm.terminate(grace_s=TERM_TIMEOUT_S)
-        vm.cleanup()

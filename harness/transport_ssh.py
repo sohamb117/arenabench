@@ -10,6 +10,8 @@ from pathlib import Path
 from common.errors import TransportError
 from common.protocol import MAX_FRAME_BYTES, Envelope, parse_envelope, serialize_envelope
 
+_GUEST_PYTHON = "/opt/arenabench-venv/bin/python3"
+
 
 @dataclass(frozen=True, slots=True)
 class SshConfig:
@@ -107,7 +109,7 @@ class SshTransport:
         key_arg = [] if self._cfg.key_path is None else ["-i", str(self._cfg.key_path)]
         if self._cfg.remote_command is None:
             command: list[str] = [
-                "python3",
+                _GUEST_PYTHON,
                 "-m",
                 "harness",
                 f"/home/{self._cfg.user}/config.json",
