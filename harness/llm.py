@@ -112,6 +112,10 @@ def call(
         )
     completion = cast(_LiteLlmCompletion, litellm.completion)
     last_retryable: Exception | None = None
+    # Plan §9 S16: pass num_retries=0 to LiteLLM so its internal retry loop is
+    # disabled — our outer loop is the SOLE retry mechanism, and every attempt
+    # fires on_attempt() so api.jsonl gets one llm_request frame per attempt.
+    # LiteLLM-internal retries would collapse N attempts into one observable.
     for attempt in range(max(1, num_retries)):
         if on_attempt is not None:
             on_attempt(attempt)
@@ -122,7 +126,7 @@ def call(
                     messages=messages,
                     temperature=temperature,
                     timeout=timeout_s,
-                    num_retries=num_retries,
+                    num_retries=0,
                     fallbacks=fallbacks or None,
                     drop_params=True,
                     max_tokens=max_tokens,
@@ -133,7 +137,7 @@ def call(
                     messages=messages,
                     temperature=temperature,
                     timeout=timeout_s,
-                    num_retries=num_retries,
+                    num_retries=0,
                     fallbacks=fallbacks or None,
                     drop_params=True,
                     max_tokens=max_tokens,

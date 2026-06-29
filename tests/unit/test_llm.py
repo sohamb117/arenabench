@@ -60,7 +60,7 @@ def test_call_returns_usage_cost_and_content_when_litellm_succeeds() -> None:
         messages=MESSAGES,
         temperature=TEMPERATURE,
         timeout=TIMEOUT_S,
-        num_retries=NUM_RETRIES,
+        num_retries=0,
         fallbacks=[FALLBACK_MODEL],
         drop_params=True,
         max_tokens=MAX_TOKENS,
