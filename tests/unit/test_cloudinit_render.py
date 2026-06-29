@@ -96,6 +96,26 @@ def test_secrets_block_renders_export_lines() -> None:
     assert "export OPENAI_API_KEY=sk-openai-1" in out
 
 
+def test_secrets_block_shell_quotes_metacharacter_values() -> None:
+    """Round-20 lock: API keys containing $/spaces/quotes/semicolons must survive
+    `. ~/.secrets` sourcing. cloudinit.py shlex.quotes every value before
+    rendering so the export line is shell-safe regardless of byte content.
+    """
+    cfg = _match_config(n_agents=_AGENT_COUNT_2)
+    cb, pb = _blobs(_AGENT_COUNT_2)
+    env = {0: (("WEIRD_KEY", "sk $WITH;'meta' \"chars\""),)}
+
+    out = render_user_data(
+        match_config=cfg,
+        config_blobs=cb,
+        prompt_blobs=pb,
+        ssh_pubkey=_TEST_SSH_PUBKEY,
+        agent_env_vars=env,
+    )
+
+    assert "export WEIRD_KEY='sk $WITH;'\"'\"'meta'\"'\"' \"chars\"'" in out
+
+
 def test_network_policy_full_flushes_iptables() -> None:
     cfg = _match_config(n_agents=_AGENT_COUNT_2, network_policy="full")
     cb, pb = _blobs(_AGENT_COUNT_2)

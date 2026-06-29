@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import selectors
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -113,14 +114,16 @@ class SshTransport:
     def _argv(self) -> list[str]:
         key_arg = [] if self._cfg.key_path is None else ["-i", str(self._cfg.key_path)]
         if self._cfg.remote_command is None:
-            # §3.B9 + Oracle round 19: API keys live in /home/agentN/.secrets
+            # §3.B9 + Oracle round 19/20: API keys live in /home/agentN/.secrets
             # (mode 0600, owner agentN, seeded by cloud-init). Sourcing here keeps
             # the raw key out of ssh argv and /proc/<pid>/cmdline.
+            # shlex.quote so the remote shell parses the semicolon-containing
+            # body as a single argument to `bash -lc`, not as two statements.
             harness_cmd = (
                 f". /home/{self._cfg.user}/.secrets 2>/dev/null; "
                 f"exec {_GUEST_PYTHON} -m harness /home/{self._cfg.user}/config.json"
             )
-            command: list[str] = ["bash", "-lc", harness_cmd]
+            command: list[str] = ["bash", "-lc", shlex.quote(harness_cmd)]
         else:
             command = list(self._cfg.remote_command)
         return [

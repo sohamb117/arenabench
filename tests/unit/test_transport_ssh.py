@@ -64,8 +64,8 @@ def test_open_constructs_expected_ssh_argv(monkeypatch: pytest.MonkeyPatch) -> N
         "agent0@127.0.0.1",
         "bash",
         "-lc",
-        ". /home/agent0/.secrets 2>/dev/null; "
-        "exec /opt/arenabench-venv/bin/python3 -m harness /home/agent0/config.json",
+        "'. /home/agent0/.secrets 2>/dev/null; "
+        "exec /opt/arenabench-venv/bin/python3 -m harness /home/agent0/config.json'",
     ]
     process.close_pipes()
 

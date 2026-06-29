@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -55,7 +56,7 @@ def _build_agents(
                 config_blob=config_blobs[entry.slot],
                 prompt_blob=prompt_blobs[entry.slot],
                 cgroup_limits=match_config.cgroup_limits,
-                env_vars=agent_env_vars.get(entry.slot, ()),
+                env_vars=tuple((k, shlex.quote(v)) for k, v in agent_env_vars.get(entry.slot, ())),
             )
         )
     return agents

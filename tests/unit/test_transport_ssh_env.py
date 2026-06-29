@@ -37,9 +37,10 @@ def _env(seq: int = 1) -> Envelope:
 
 
 def test_default_remote_command_sources_secrets_file(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Round-19 §3.B9 lock: API keys must NOT appear in ssh argv. SshTransport's
-    default remote command sources /home/agentN/.secrets via bash -lc, so the
-    raw key only enters the process environment from a 0600 file on the guest.
+    """Round-19/20 §3.B9 lock: API keys must NOT appear in ssh argv. SshTransport's
+    default remote command sources /home/agentN/.secrets via bash -lc, with the
+    body shlex-quoted so the remote shell parses it as a single -c argument
+    (Oracle round-20 caught the un-quoted semicolon splitting into two commands).
     """
     process = FakeSshProcess()
     argv = patch_popen(monkeypatch, process)
@@ -49,8 +50,12 @@ def test_default_remote_command_sources_secrets_file(monkeypatch: pytest.MonkeyP
     bash_idx = argv.index("bash")
     assert argv[bash_idx + 1] == "-lc"
     cmd = argv[bash_idx + 2]
-    assert ". /home/agent0/.secrets" in cmd
-    assert "exec /opt/arenabench-venv/bin/python3 -m harness /home/agent0/config.json" in cmd
+    assert cmd.startswith("'") and cmd.endswith("'"), cmd
+    body = cmd[1:-1]
+    assert body == (
+        ". /home/agent0/.secrets 2>/dev/null; "
+        "exec /opt/arenabench-venv/bin/python3 -m harness /home/agent0/config.json"
+    )
     assert "env" not in argv
     process.close_pipes()
 
