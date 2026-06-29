@@ -32,12 +32,19 @@ def _silence_violation(
 
 
 def is_alive(state: AgentLivenessState, now_monotonic: float, th: LivenessThresholds) -> bool:
-    """Plan §7 dual-signal formula. PURE — no I/O, no time access."""
+    """Dual-signal liveness per plan §3.A4 and §7.
+
+    - vsock_connected=False is always fatal (explicit disconnect).
+    - kill0_alive=False (explicit dead response) is fatal.
+    - silence_timeout is fatal on its own.
+    - kill0_stale ALONE is not fatal (probe didn't respond in time, but
+      frames are still flowing); only when paired with silence does it
+      become a corroborated death. Avoids a transient 5s guest-probe
+      stall killing an otherwise-live agent.
+    """
     if not state.vsock_connected:
         return False
     if not state.kill0_alive:
-        return False
-    if (now_monotonic - state.kill0_ts_monotonic) > th.kill0_max_age_s:
         return False
     return not _silence_violation(state, now_monotonic, th)
 
@@ -51,10 +58,11 @@ def cause_of_death(state: AgentLivenessState, now_monotonic: float, th: Liveness
     silence = _silence_violation(state, now_monotonic, th)
     kill0_stale = (now_monotonic - state.kill0_ts_monotonic) > th.kill0_max_age_s
 
-    if not state.kill0_alive or kill0_stale:
-        if kill0_stale and silence:
-            return "kill0_stale_and_silence"
+    if not state.kill0_alive:
         return "kill0_dead"
+
+    if silence and kill0_stale:
+        return "kill0_stale_and_silence"
 
     if silence:
         return "silence_timeout"

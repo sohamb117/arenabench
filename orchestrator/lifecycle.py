@@ -49,14 +49,14 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
     def finish(result: str, winner_slot: int | None, cause: str) -> MatchOutcome:
         res_lit = cast(Literal["victory", "draw", "timeout", "error"], result)
         out = MatchOutcome(result=res_lit, winner=winner_slot, cause=cause, final_state="DONE")
+        ctx.logger.write_summary(out.model_dump())
+        transition("DONE", cause)
         term = mk_env(
             "match_terminated",
             MatchTerminated(result=res_lit, winner=winner_slot, cause=cause),
             dst="broadcast",
         )
         ctx.logger.write_envelope(term)
-        ctx.logger.write_summary(out.model_dump())
-        transition("DONE", cause)
         ctx.logger.close()
         return out
 

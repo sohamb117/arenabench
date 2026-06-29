@@ -77,10 +77,10 @@ def test_dead_llm_max_exceeded() -> None:
     assert cause_of_death(state, NOW, TH) == "silence_timeout"
 
 
-def test_dead_kill0_stale() -> None:
+def test_kill0_stale_alone_is_alive_no_silence() -> None:
     state = make_state(kill0_ts_monotonic=NOW - STALE_OFFSET_KILL0)
-    assert is_alive(state, NOW, TH) is False
-    assert cause_of_death(state, NOW, TH) == "kill0_dead"
+    assert is_alive(state, NOW, TH) is True
+    assert cause_of_death(state, NOW, TH) == "alive"
 
 
 def test_dead_kill0_stale_and_silence() -> None:
