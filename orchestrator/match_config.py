@@ -16,6 +16,13 @@ class AgentEntry(pydantic.BaseModel):
     user: str = pydantic.Field(pattern=r"^agent[0-9]+$")
     config: str
 
+    @pydantic.model_validator(mode="after")
+    def _user_matches_slot(self) -> AgentEntry:
+        expected = f"agent{self.slot}"
+        if self.user != expected:
+            raise ValueError(f"user must be {expected!r}, got {self.user!r}")
+        return self
+
 
 class CgroupLimits(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)

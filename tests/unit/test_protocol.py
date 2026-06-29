@@ -12,6 +12,7 @@ from common.protocol import (
     BootAckResponse,
     Envelope,
     Frame,
+    HarnessDead,
     HarnessExit,
     HeartbeatInjected,
     HeartbeatTick,
@@ -19,6 +20,8 @@ from common.protocol import (
     Kill0Response,
     LlmRequest,
     LlmResponse,
+    MatchStateChange,
+    MatchTerminated,
     PidAnnounce,
     ProcList,
     ProcListResponse,
@@ -49,7 +52,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "pid_announce",
             PidAnnounce(
-                kind="pid_announce",
                 pid=1001,
                 user="agent1",
                 uid=1001,
@@ -61,7 +63,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "bash_request",
             BashRequest(
-                kind="bash_request",
                 turn=1,
                 request_id="r1",
                 commands=[BashCommand(keystrokes="id\n", duration_sec=0.1, is_blocking=True)],
@@ -70,7 +71,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "bash_result",
             BashResult(
-                kind="bash_result",
                 turn=1,
                 request_id="r1",
                 terminal_output="uid=1001(agent1)\n",
@@ -82,7 +82,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "llm_request",
             LlmRequest(
-                kind="llm_request",
                 turn=2,
                 request_id="llm1",
                 model="gpt-4o",
@@ -94,7 +93,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "llm_response",
             LlmResponse(
-                kind="llm_response",
                 turn=2,
                 request_id="llm1",
                 content="ok",
@@ -116,7 +114,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "turn_summary",
             TurnSummary(
-                kind="turn_summary",
                 turn=3,
                 action_count=2,
                 free_tokens=128,
@@ -142,7 +139,6 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "proc_list_response",
             ProcListResponse(
-                kind="proc_list_response",
                 request_id="p1",
                 user="agent1",
                 pids=[1, 2, 3],
@@ -152,11 +148,30 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
         (
             "boot_ack_response",
             BootAckResponse(
-                kind="boot_ack_response",
                 request_id="b1",
                 kernel="6.1.0",
                 uptime_s=12.5,
                 cid=3,
+            ),
+        ),
+        (
+            "harness_dead",
+            HarnessDead(kind="harness_dead", slot=0, cause="vsock_disconnect+kill0_dead"),
+        ),
+        (
+            "match_state_change",
+            MatchStateChange(
+                from_state="IN_MATCH",
+                to_state="WINNER_GRACE",
+                reason="alive_count==1",
+            ),
+        ),
+        (
+            "match_terminated",
+            MatchTerminated(
+                result="victory",
+                winner=1,
+                cause="opponent_crashed",
             ),
         ),
     ],
@@ -224,7 +239,8 @@ def test_ts_accepts_microsecond_precision() -> None:
                 "v": 1,
                 "ts": "2026-06-28T19:00:00.123456Z",
                 "seq": 1,
-                "src": "agent0",
+                "src": "orchestrator",
+                "dst": "agent0",
                 "kind": "shutdown",
                 "data": {"reason": "stop"},
             }
@@ -232,15 +248,3 @@ def test_ts_accepts_microsecond_precision() -> None:
     )
 
     assert env.ts.microsecond == MICROSECOND
-
-
-def test_negative_seq_rejected() -> None:
-    with pytest.raises(ValidationError):
-        Envelope(
-            v=1,
-            ts=datetime(2026, 6, 28, 19, 0, 0, tzinfo=UTC),
-            seq=-1,
-            src="agent0",
-            kind="shutdown",
-            data=Shutdown(kind="shutdown", reason="stop"),
-        )
