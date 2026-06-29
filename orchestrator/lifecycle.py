@@ -54,12 +54,18 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         alive_at_timeout: list[int] | None = None,
         total_duration_s: float | None = None,
     ) -> MatchOutcome:
+        winner_pid: int | None = None
+        if winner_slot is not None and winner_slot in agents_ref:
+            winner_pid = agents_ref[winner_slot].pid
         out = build_outcome(
             result,
             winner_slot,
             cause,
             alive_at_timeout=alive_at_timeout,
             total_duration_s=total_duration_s,
+            transport_used=ctx.transport_used,
+            cid=ctx.cid,
+            winner_pid=winner_pid,
         )
         ctx.logger.write_summary(out.model_dump())
         transition("DONE", cause)
@@ -67,6 +73,8 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         ctx.logger.write_envelope(mk_env("match_terminated", term_data, "broadcast"))
         ctx.logger.close()
         return out
+
+    agents_ref: dict[int, AgentState] = {}
 
     transition("VM_BOOTING", "run_match_called")
 
@@ -97,6 +105,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
         slot: AgentState(slot=slot, last_frame_ts=now, last_heartbeat_ts=now, kill0_ts=now)
         for slot in range(ctx.match_config.n_agents)
     }
+    agents_ref.update(agents)
 
     announced: set[int] = set()
     while ctx.clock() - start_ts < prov_timeout_s and len(announced) < ctx.match_config.n_agents:

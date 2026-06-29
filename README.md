@@ -16,10 +16,10 @@ This prompt is intentionally devoid of rules, tool listings, and opponent detail
 
 **v1 scaffolding complete.** Waves 0–7 of the build plan ([`.omo/plans/arenabench-build.md`](.omo/plans/arenabench-build.md)) have landed:
 
-- 233 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
-- Oracle reviewer gates G1 (schemas), G2 (state machine + races), G3 (Terminus 2 fidelity) all cleared
+- 267 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
+- Oracle reviewer gates G1 (schemas), G2 (state machine + races), G3 (Terminus 2 fidelity), G5 (final task-complete) all cleared across 21 review rounds
 - `summary.json` is validated against [`orchestrator/schemas/summary.schema.json`](orchestrator/schemas/summary.schema.json) on every write
-- 5 e2e tests gated behind `ARENABENCH_E2E=1` — exercise the real-VM scenarios S1 (1v1 victory), S5 (log completeness), S6 (N=4 free-for-all), S8 (VM disposability) once you build the golden image
+- 23 e2e tests gated behind `ARENABENCH_E2E=1` — exercise the real-VM scenarios S1/S3/S4/S5/S6/S8/S11/S15/S17 (plan §14 binary observables) once you build the golden image
 
 ## Quickstart
 
@@ -47,7 +47,7 @@ git clone <this repo>
 cd arenabench
 ./scripts/dev-setup.sh    # uv sync --all-groups
 ./scripts/lint.sh         # ruff + ruff format --check + basedpyright (strict)
-./scripts/test.sh         # pytest -m "not e2e"   → 233 passed
+./scripts/test.sh         # pytest -m "not e2e"   → 267 passed
 ```
 
 ### CLI
@@ -81,7 +81,7 @@ ARENABENCH_ARCH=amd64 ./vm/golden/build.sh
 ARENABENCH_DEBIAN_RELEASE=12.7.0 ./vm/golden/build.sh
 ```
 
-The pipeline downloads the Debian generic-cloud image, packages the arenabench source as a base64-encoded tarball inside the cloud-init seed-iso (so customize.sh finds the repo at `/opt/arenabench` and runs `uv pip install --system /opt/arenabench`), runs `customize.sh` once inside the booted VM (installs `python3`, `uv`, `tmux`, `iptables`, the harness, the [iptables allowlist](vm/golden/allowlist-iptables.sh), and the guest-probe), then finalizes the qcow2 + writes `vm/images/MANIFEST.json` with SHA256 + customization manifest. Takes 5–30 min depending on host (slower on Apple Silicon TCG fallback per plan R1).
+The pipeline downloads the Debian generic-cloud image, packages the arenabench source as a base64-encoded tarball inside the cloud-init seed-iso, runs `customize.sh` once inside the booted VM (installs `python3`, `uv`, `tmux`, `iptables`, then creates a Python 3.12 venv at `/opt/arenabench-venv` and `uv pip install`s the harness there, installs the [iptables allowlist](vm/golden/allowlist-iptables.sh), and the guest-probe), then finalizes the qcow2 + writes `vm/images/MANIFEST.json` with SHA256 + customization manifest. Takes 5–30 min depending on host (slower on Apple Silicon TCG fallback per plan R1).
 
 Track the pinned point release and CVE state in [`vm/CVES.md`](vm/CVES.md).
 

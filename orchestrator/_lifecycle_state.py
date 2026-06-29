@@ -27,6 +27,9 @@ class MatchOutcome(BaseModel):
     final_state: Literal["DONE"]
     alive_at_timeout: list[Annotated[int, Field(ge=0, le=15)]] | None = None
     total_duration_s: Annotated[float, Field(ge=0.0)] | None = None
+    transport_used: Literal["vsock", "ssh"] | None = None
+    cid: Annotated[int, Field(ge=0)] | None = None
+    winner_pid: Annotated[int, Field(ge=1)] | None = None
 
 
 def build_outcome(
@@ -36,6 +39,9 @@ def build_outcome(
     *,
     alive_at_timeout: list[int] | None = None,
     total_duration_s: float | None = None,
+    transport_used: Literal["vsock", "ssh"] | None = None,
+    cid: int | None = None,
+    winner_pid: int | None = None,
 ) -> MatchOutcome:
     """Construct a validated MatchOutcome. Extracted so lifecycle.run_match
     stays under the 250 LOC cap; the cast + multi-line kwargs live here.
@@ -48,6 +54,9 @@ def build_outcome(
         final_state="DONE",
         alive_at_timeout=alive_at_timeout,
         total_duration_s=total_duration_s,
+        transport_used=transport_used,
+        cid=cid,
+        winner_pid=winner_pid,
     )
 
 
@@ -61,6 +70,8 @@ class MatchContext:
     clock: Callable[[], float]
     liveness: LivenessThresholds
     poll_interval_s: float = 1.0
+    transport_used: Literal["vsock", "ssh"] | None = None
+    cid: int | None = None
 
 
 @dataclass

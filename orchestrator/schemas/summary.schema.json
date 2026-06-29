@@ -39,6 +39,27 @@
         { "type": "null" }
       ],
       "description": "Plan §9 S17 binary observable: elapsed seconds from HARNESSES_UP to terminal state. Null for pre-match errors (boot/provisioning timeouts)."
+    },
+    "transport_used": {
+      "anyOf": [
+        { "type": "string", "enum": ["vsock", "ssh"] },
+        { "type": "null" }
+      ],
+      "description": "Plan §3.A3 / R2: which JSONL transport carried the match. 'vsock' is the locked default; 'ssh' is the R2 fallback for hosts without /dev/vhost-vsock."
+    },
+    "cid": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ],
+      "description": "Plan §3.B6 binary observable: per-match VM CID used for vsock. Null when transport_used='ssh' since CID is irrelevant."
+    },
+    "winner_pid": {
+      "anyOf": [
+        { "type": "integer", "minimum": 1 },
+        { "type": "null" }
+      ],
+      "description": "Plan §9 S1 binary observable: surviving harness PID inside the guest at terminal state. Null for non-victory outcomes."
     }
   }
 }

@@ -31,6 +31,9 @@ class _SummaryShape(BaseModel):
     final_state: Literal["DONE"]
     alive_at_timeout: list[Annotated[int, Field(ge=0, le=15)]] | None = None
     total_duration_s: Annotated[float, Field(ge=0.0)] | None = None
+    transport_used: Literal["vsock", "ssh"] | None = None
+    cid: Annotated[int, Field(ge=0)] | None = None
+    winner_pid: Annotated[int, Field(ge=1)] | None = None
 
 
 @dataclass(frozen=True, slots=True)

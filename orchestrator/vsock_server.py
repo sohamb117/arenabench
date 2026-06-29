@@ -179,6 +179,8 @@ class VsockServer:
         raise TransportError("connection timed out", port=port)
 
     def recv_frame(self, port: int, timeout_s: float | None) -> Envelope | None:
+        if port not in self._conns:
+            self._poll_accept(port)
         conn = self._conns.get(port)
         if conn is None:
             return None
@@ -186,6 +188,14 @@ class VsockServer:
         if frame is None:
             self._close_conn(port)
         return frame
+
+    def _poll_accept(self, port: int) -> None:
+        if port not in self._listeners:
+            return
+        try:
+            self._accept_ready(port)
+        except (BlockingIOError, OSError):
+            return
 
     def send_frame(self, port: int, env: Envelope) -> None:
         conn = self._conns.get(port)

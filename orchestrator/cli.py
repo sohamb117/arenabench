@@ -199,6 +199,8 @@ def _drive_match(
             clock=now_monotonic_s,
             liveness=LivenessThresholds(),
             poll_interval_s=1.0,
+            transport_used="ssh",
+            cid=None,
         )
         return run_match(ctx)
     finally:

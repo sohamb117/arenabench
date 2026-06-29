@@ -215,11 +215,15 @@ def test_network_policy_full_parses(tmp_path: pathlib.Path) -> None:
     assert cfg.network_policy == _NETWORK_POLICY_FULL
 
 
-def test_cgroup_limits_none_and_valid_values_parse(tmp_path: pathlib.Path) -> None:
-    # Given
+def test_cgroup_limits_must_be_null_pending_b13(tmp_path: pathlib.Path) -> None:
+    """Plan §3.B13 cgroup enforcement is deferred until the systemd-run wrapper
+    lands. cgroup_limits=null parses; non-null is rejected with a clear message
+    pointing at the deferral.
+    """
     payload = _valid_2_agent_payload()
     payload["cgroup_limits"] = None
-    path_none = _write_match(tmp_path, payload, "match-none.json")
+    cfg_none = load_match_config(_write_match(tmp_path, payload, "match-none.json"))
+    assert cfg_none.cgroup_limits is None
 
     payload_with_limits = _valid_2_agent_payload()
     payload_with_limits["cgroup_limits"] = {
@@ -228,15 +232,10 @@ def test_cgroup_limits_none_and_valid_values_parse(tmp_path: pathlib.Path) -> No
     }
     path_limits = _write_match(tmp_path, payload_with_limits, "match-limits.json")
 
-    # When
-    cfg_none = load_match_config(path_none)
-    cfg_limits = load_match_config(path_limits)
+    with pytest.raises(ConfigError) as exc:
+        load_match_config(path_limits)
 
-    # Then
-    assert cfg_none.cgroup_limits is None
-    assert cfg_limits.cgroup_limits is not None
-    assert cfg_limits.cgroup_limits.cpu_quota_ms_per_s == _CPU_QUOTA_MS_PER_S
-    assert cfg_limits.cgroup_limits.mem_mb == _MEM_MB
+    assert "cgroup_limits" in str(exc.value) or exc.value.field == "cgroup_limits"
 
 
 def test_missing_file_raises_config_error(tmp_path: pathlib.Path) -> None:
