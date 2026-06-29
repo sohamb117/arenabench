@@ -1,0 +1,24 @@
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arenabench:dev
+    container_name: arenabench-orchestrator
+    platform: ${ARENABENCH_PLATFORM:-linux/arm64}
+    working_dir: /app
+    volumes:
+      - .:/app:rw
+      # Named volume shields /app/.venv from the bind mount above; Docker auto-populates it from the image on first start.
+      - arenabench_venv:/app/.venv
+      - ./vm/images:/app/vm/images:rw
+    environment:
+      ARENABENCH_CONTAINER: "1"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    tty: true
+    stdin_open: true
+
+volumes:
+  arenabench_venv: {}

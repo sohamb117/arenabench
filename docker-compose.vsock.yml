@@ -1,0 +1,10 @@
+# Apply with: docker compose -f docker-compose.yml -f docker-compose.vsock.yml ...
+# Only valid when /dev/vhost-vsock and (kvm or hvf-equivalent) exist on host.
+services:
+  orchestrator:
+    devices:
+      - /dev/vhost-vsock:/dev/vhost-vsock
+      - /dev/kvm:/dev/kvm
+    cap_add:
+      - SYS_NICE
+      - NET_ADMIN
