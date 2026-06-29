@@ -30,7 +30,8 @@ This prompt is intentionally devoid of rules, tool listings, and opponent detail
 | Python ≥ 3.12 | Runtime | via `uv python install 3.12` |
 | [uv](https://docs.astral.sh/uv/) | Package manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | `tmux` | Persistent bash shell inside the harness | `brew install tmux` (macOS) |
-| `qemu-system-aarch64` + `qemu-img` + `cloud-localds` | Real-VM e2e only | `brew install qemu cdrtools` (macOS arm64) |
+| `qemu-system-aarch64` + `qemu-img` | Real-VM e2e only | `brew install qemu` (macOS arm64) |
+| ISO builder for seed-iso | `vm/golden/build.sh` (one of, in order tried): `cloud-localds` (Debian) → `mkisofs`/`genisoimage` (`brew install cdrtools`) → `hdiutil` (macOS built-in) | `brew install cdrtools` OR rely on built-in `hdiutil` |
 | `ssh` | R2 fallback transport (vsock unavailable on Docker Desktop / colima) | preinstalled on macOS |
 
 LLM credentials are only required for e2e runs:

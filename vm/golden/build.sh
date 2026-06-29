@@ -12,8 +12,10 @@
 # orchestrator/vm.py creates them at run time.
 #
 # Required tools on the host (or inside the build container):
-#   qemu-system-{aarch64,x86_64}, qemu-img, cloud-localds, curl, sha256sum,
-#   genisoimage (or cloud-image-utils which provides cloud-localds).
+#   qemu-system-{aarch64,x86_64}, qemu-img, curl, sha256sum, and ONE of
+#   cloud-localds | mkisofs | genisoimage | hdiutil (auto-detected by
+#   make_seed_iso). cloud-localds is Debian/Ubuntu-only; macOS hosts use
+#   mkisofs (from `brew install cdrtools`) or the built-in hdiutil.
 
 set -euo pipefail
 
@@ -114,7 +116,37 @@ $(sed 's/^/      /' "$TMP/customize.sh")
 $(sed 's/^/      /' "$TMP/allowlist-iptables.sh")
 EOF
 echo 'instance-id: arenabench-golden' > "$TMP/meta-data"
-cloud-localds "$TMP/seed.iso" "$TMP/user-data" "$TMP/meta-data"
+
+# Build the cloud-init seed-iso. `cloud-localds` is Debian/Ubuntu-only and
+# has no macOS Homebrew package, so fall back through portable ISO9660
+# builders. The mandatory contract is: ISO9660 + Rock Ridge + Joliet,
+# volume label `cidata` (per cloud-init NoCloud datasource spec), with
+# user-data and meta-data at the filesystem root.
+make_seed_iso() {
+    local out_iso="$1" user_data="$2" meta_data="$3"
+    if command -v cloud-localds >/dev/null 2>&1; then
+        cloud-localds "$out_iso" "$user_data" "$meta_data"
+        return
+    fi
+    local stage
+    stage="$(mktemp -d)"
+    cp "$user_data" "$stage/user-data"
+    cp "$meta_data" "$stage/meta-data"
+    if command -v mkisofs >/dev/null 2>&1; then
+        mkisofs -quiet -output "$out_iso" -volid cidata -joliet -rock "$stage"
+    elif command -v genisoimage >/dev/null 2>&1; then
+        genisoimage -quiet -output "$out_iso" -volid cidata -joliet -rock "$stage"
+    elif command -v hdiutil >/dev/null 2>&1; then
+        hdiutil makehybrid -quiet -iso -joliet -default-volume-name cidata -o "$out_iso" "$stage" >/dev/null
+    else
+        rm -rf "$stage"
+        echo "ERROR: need one of cloud-localds | mkisofs | genisoimage | hdiutil to build seed-iso" >&2
+        exit 1
+    fi
+    rm -rf "$stage"
+}
+
+make_seed_iso "$TMP/seed.iso" "$TMP/user-data" "$TMP/meta-data"
 
 cp "$BASE_PATH" "$GOLDEN_PATH.tmp"
 qemu-img resize "$GOLDEN_PATH.tmp" 10G
