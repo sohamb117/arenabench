@@ -56,6 +56,8 @@ def test_open_constructs_expected_ssh_argv(monkeypatch: pytest.MonkeyPatch) -> N
         "-o",
         "ServerAliveInterval=12",
         "-o",
+        "BatchMode=yes",
+        "-o",
         "StrictHostKeyChecking=no",
         "-o",
         "UserKnownHostsFile=/dev/null",

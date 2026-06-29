@@ -128,6 +128,8 @@ class SshTransport:
             "-o",
             f"ServerAliveInterval={int(self._cfg.keepalive_interval_s)}",
             "-o",
+            "BatchMode=yes",
+            "-o",
             "StrictHostKeyChecking=no",
             "-o",
             "UserKnownHostsFile=/dev/null",
