@@ -1,0 +1,73 @@
+[project]
+name = "arenabench"
+version = "0.0.1"
+description = "N-LLM adversarial benchmark inside a single disposable Linux VM"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "arenabench contributors" }]
+dependencies = [
+    "pydantic>=2.8,<3",
+    "structlog>=24",
+    "typer>=0.12,<1",
+    "litellm>=1.50,<2",
+    "jinja2>=3.1,<4",
+]
+
+[project.scripts]
+arenabench = "orchestrator.__main__:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "basedpyright>=1.18",
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["common*", "harness*", "orchestrator*", "vm*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "RUF",
+    "TID",
+    "PL",
+    "PTH",
+]
+ignore = ["PLR0913"]
+
+[tool.basedpyright]
+include = ["common", "harness", "orchestrator", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportAny = "error"
+reportExplicitAny = "error"
+reportMissingTypeStubs = "warning"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+markers = [
+    "e2e: end-to-end test requiring QEMU + LLM credentials (skipped by default)",
+]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
