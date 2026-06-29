@@ -1,5 +1,20 @@
 #cloud-config
 
+# Plan §3.B7 / §3.B10 (Oracle round-25 explicit-deferral note):
+#   Per-agent harness systemd autostart units are intentionally absent from
+#   this template. The orchestrator drives each harness over SSH after
+#   cloud-init completes — see orchestrator/lifecycle.py and
+#   orchestrator/cli.py::_drive_match. An autostart unit would fire before
+#   the orchestrator finished establishing the runtime channel (vsock or
+#   ssh), so the first turn's stdout would be discarded.
+#
+#   If a future revision moves harness lifecycle into the guest VM
+#   (vsock-first runtime per the deferred B10 follow-up), restore a
+#   `arenabench-harness@<slot>.service` unit here with `Restart=no` +
+#   `Type=notify` so the orchestrator can synchronize the hand-off. Until
+#   then, SSH-driven spawn is the contract and this file deliberately
+#   leaves the runcmd block focused on users, secrets, and network policy.
+
 ssh_pwauth: false
 disable_root: false
 
