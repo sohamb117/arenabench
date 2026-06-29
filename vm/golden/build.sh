@@ -32,12 +32,12 @@ DEBIAN_RELEASE="${ARENABENCH_DEBIAN_RELEASE:-20260615-2510}"
 # golden naming (matches orchestrator/cli.py _ARCH_TO_IMAGE_SUFFIX).
 case "$ARCH" in
     aarch64)
-        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64.qcow2"
+        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-arm64-${DEBIAN_RELEASE}.qcow2"
         QEMU_BIN="qemu-system-aarch64"
         MACHINE_TYPE="virt"
         ;;
     amd64|x86_64)
-        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-amd64.qcow2"
+        BASE_URL="https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_RELEASE}/debian-12-genericcloud-amd64-${DEBIAN_RELEASE}.qcow2"
         QEMU_BIN="qemu-system-x86_64"
         MACHINE_TYPE="q35"
         ARCH="amd64"
