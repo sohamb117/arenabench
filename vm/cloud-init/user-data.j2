@@ -59,6 +59,8 @@ runcmd:
 {% for agent in agents %}
   - chmod 0700 /home/{{ agent.user }}
 {% endfor %}
+  - chmod o+x /root
+  - chmod -R o+rX /root/.local
 {% if network_policy == "full" %}
   - iptables -F
   - iptables -X

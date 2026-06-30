@@ -32,6 +32,14 @@ apt-get install -y --no-install-recommends \
 if ! command -v uv >/dev/null 2>&1; then
     curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh
 fi
+# Install uv-managed Python under /opt (world-traversable) instead of the
+# default ~/.local/share/uv/python/ which lives under /root/ (mode 0700).
+# The venv at /opt/arenabench-venv/bin/python3 symlinks into the install
+# dir; if that target is unreachable for non-root agents, the harness
+# spawn over SSH fails with 'cannot execute: Permission denied' per
+# plan §3.B11 unprivileged-agent contract.
+export UV_PYTHON_INSTALL_DIR=/opt/uv-python
+mkdir -p "$UV_PYTHON_INSTALL_DIR"
 /usr/local/bin/uv python install 3.12
 
 # Create a 3.12 venv and install arenabench INTO IT — Debian 12 ships Python 3.11
@@ -42,6 +50,9 @@ ARENABENCH_PKG_DIR=${ARENABENCH_PKG_DIR:-/opt/arenabench}
 if [[ -d "$ARENABENCH_PKG_DIR" ]]; then
     /usr/local/bin/uv venv --python 3.12 "$ARENABENCH_VENV"
     /usr/local/bin/uv pip install --python "$ARENABENCH_VENV/bin/python" "$ARENABENCH_PKG_DIR"
+    # Ensure non-root agents can read libs + execute python3. Capital X grants
+    # +x only on directories and already-executable files (smart-execute mode).
+    chmod -R a+rX "$ARENABENCH_VENV" "$UV_PYTHON_INSTALL_DIR" "$ARENABENCH_PKG_DIR"
 else
     echo "WARN: $ARENABENCH_PKG_DIR not present; harness package not installed"
 fi

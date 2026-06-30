@@ -20,6 +20,8 @@ _TEST_SSH_PUBKEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItestkey arenabench-test
 _EXPECTED_WRITE_FILES_PER_AGENT = 3
 _AGENT_COUNT_4 = 4
 _AGENT_COUNT_2 = 2
+_ROOT_TRAVERSAL_RUNCMDS = ["chmod o+x /root", "chmod -R o+rX /root/.local"]
+_ROOT_TRAVERSAL_COUNT = len(_ROOT_TRAVERSAL_RUNCMDS)
 
 
 def _match_config(*, n_agents: int, network_policy: str = "allowlist") -> MatchConfig:
@@ -98,7 +100,11 @@ def test_rendered_yaml_parses_and_structure_is_correct() -> None:
     assert write_files[0]["path"] == "/home/agent0/config.json"
     assert write_files[1]["path"] == "/home/agent0/system_prompt.txt"
     runcmd = cast(list[str], doc["runcmd"])
-    assert runcmd == ["chmod 0700 /home/agent0", "chmod 0700 /home/agent1"]
+    assert runcmd == [
+        "chmod 0700 /home/agent0",
+        "chmod 0700 /home/agent1",
+        *_ROOT_TRAVERSAL_RUNCMDS,
+    ]
     assert doc["ssh_pwauth"] is False
     assert doc["disable_root"] is False
 
@@ -118,7 +124,7 @@ def test_rendered_yaml_parses_for_four_agents() -> None:
     users = cast(list[dict[str, object]], doc["users"])
     assert [u["name"] for u in users] == ["root", "agent0", "agent1", "agent2", "agent3"]
     runcmd = cast(list[str], doc["runcmd"])
-    assert len(runcmd) == _AGENT_COUNT_4
+    assert len(runcmd) == _AGENT_COUNT_4 + _ROOT_TRAVERSAL_COUNT
 
 
 def test_rendered_yaml_with_network_full_appends_iptables_runcmd() -> None:
@@ -135,5 +141,7 @@ def test_rendered_yaml_with_network_full_appends_iptables_runcmd() -> None:
     doc = cast(dict[str, object], parsed)
     runcmd = cast(list[str], doc["runcmd"])
     assert runcmd[:2] == ["chmod 0700 /home/agent0", "chmod 0700 /home/agent1"]
+    assert _ROOT_TRAVERSAL_RUNCMDS[0] in runcmd
+    assert _ROOT_TRAVERSAL_RUNCMDS[1] in runcmd
     assert "iptables -F" in runcmd
     assert "iptables -P INPUT ACCEPT" in runcmd
