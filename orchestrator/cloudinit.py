@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -89,6 +90,37 @@ def render_user_data(
     )
 
 
+def _seed_iso_argv(out_path: Path, stage: Path, ud_path: Path, md_path: Path) -> list[str] | None:
+    """First-available seed-iso builder, in order of preference.
+
+    cloud-init NoCloud datasource requires: ISO9660 + Rock Ridge + Joliet,
+    volume label `cidata`, user-data + meta-data at filesystem root. All four
+    builders below honor that contract; cloud-localds takes the two files
+    directly, the others take a pre-populated staging directory.
+    """
+    if shutil.which("cloud-localds") is not None:
+        return ["cloud-localds", str(out_path), str(ud_path), str(md_path)]
+    iso_args = ["-output", str(out_path), "-volid", "cidata", "-joliet", "-rock", str(stage)]
+    if shutil.which("mkisofs") is not None:
+        return ["mkisofs", "-quiet", *iso_args]
+    if shutil.which("genisoimage") is not None:
+        return ["genisoimage", "-quiet", *iso_args]
+    if shutil.which("hdiutil") is not None:
+        return [
+            "hdiutil",
+            "makehybrid",
+            "-quiet",
+            "-iso",
+            "-joliet",
+            "-default-volume-name",
+            "cidata",
+            "-o",
+            str(out_path),
+            str(stage),
+        ]
+    return None
+
+
 def write_seed_iso(
     *,
     user_data: str,
@@ -101,17 +133,19 @@ def write_seed_iso(
         md_path = tmp / "meta-data"
         ud_path.write_text(user_data, encoding="utf-8")
         md_path.write_text(meta_data, encoding="utf-8")
-        try:
-            subprocess.run(
-                ["cloud-localds", str(out_path), str(ud_path), str(md_path)],
-                check=True,
-                text=True,
-                capture_output=True,
+        argv = _seed_iso_argv(out_path, tmp, ud_path, md_path)
+        if argv is None:
+            raise ConfigError(
+                "no seed-iso builder found on PATH "
+                "(install one of: cloud-localds | mkisofs | genisoimage | hdiutil)",
+                path=str(out_path),
             )
+        try:
+            subprocess.run(argv, check=True, text=True, capture_output=True)
         except subprocess.CalledProcessError as exc:
             stderr_raw: object = cast(object, exc.stderr)
             stderr = stderr_raw if isinstance(stderr_raw, str) else ""
             raise ConfigError(
-                f"cloud-localds failed: {stderr}",
+                f"seed-iso builder {argv[0]} failed: {stderr}",
                 path=str(out_path),
             ) from exc

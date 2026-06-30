@@ -47,8 +47,8 @@ def _blobs(n: int) -> tuple[dict[int, str], dict[int, str]]:
 
 
 @pytest.mark.skipif(
-    shutil.which("cloud-localds") is None,
-    reason="cloud-localds not installed on host",
+    not any(shutil.which(b) for b in ("cloud-localds", "mkisofs", "genisoimage", "hdiutil")),
+    reason="no seed-iso builder installed (cloud-localds | mkisofs | genisoimage | hdiutil)",
 )
 def test_seed_iso_smoke(tmp_path: pathlib.Path) -> None:
     cfg = _match_config(n_agents=2)
