@@ -144,6 +144,8 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                 elif env.kind == "llm_response":
                     st.llm_call_start_ts = None
                     if cast(str, state_name) == "HARNESSES_UP":
+                        for other in agents.values():
+                            other.last_frame_ts = now
                         transition("IN_MATCH", "first_llm_response")
                 elif env.kind == "harness_exit":
                     st.vsock_connected = False
@@ -166,12 +168,20 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                 ctx.logger.write_envelope(hb)
                 st.last_heartbeat_ts = now
 
+        in_startup = cast(str, state_name) == "HARNESSES_UP"
         alive_set: set[int] = set()
         for slot, st in agents.items():
             if st.dead_emitted:
                 continue
             lstate = st.to_liveness()
-            if liveness.is_alive(lstate, now, ctx.liveness):
+            # Pre-LLM, agents are legitimately silent while starting up and making
+            # their first (variable-latency) LLM call — the silence+kill0 heuristic
+            # is for mid-match kill detection only. During startup an agent counts
+            # as dead solely if its transport channel closed (harness_exit / drop).
+            alive = (
+                st.vsock_connected if in_startup else liveness.is_alive(lstate, now, ctx.liveness)
+            )
+            if alive:
                 alive_set.add(slot)
             else:
                 st.dead_emitted = True
@@ -183,7 +193,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                 )
                 ctx.logger.write_envelope(dead_env)
 
-        if cast(str, state_name) == "HARNESSES_UP" and len(alive_set) < ctx.match_config.n_agents:
+        if in_startup and len(alive_set) < ctx.match_config.n_agents:
             transition("IN_MATCH", "agent_died_pre_llm")
 
         if cast(str, state_name) not in {"IN_MATCH", "WINNER_GRACE"}:

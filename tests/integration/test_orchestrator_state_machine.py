@@ -8,6 +8,7 @@ from common.protocol import (
     Envelope,
     HarnessExit,
     LlmResponse,
+    MatchStateChange,
     PidAnnounce,
 )
 from orchestrator.lifecycle import MatchContext, run_match
@@ -150,6 +151,58 @@ def test_s3_survivor_dies_in_grace(base_ctx: MatchContext) -> None:
 
     assert outcome.result == "draw"
     assert outcome.cause == "survivor_died_in_grace"
+
+
+def test_slow_agent_not_falsely_killed_pre_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A quiet-but-connected agent during startup must NOT be declared dead
+    pre-LLM. The silence+kill0 heuristic is for mid-match kill detection; at
+    the first poll kill0 has not round-tripped (stale) and a slow agent's
+    pid_announce is already old — that combination wrongly killed the anthropic
+    harness before its first (slower) LLM call. Pre-LLM death requires an
+    explicit harness_exit / channel close.
+    """
+    clock = SimClock()
+    monkeypatch.setattr(time, "sleep", make_sleep_patch(clock))
+    vsock = FakeVsockServer(clock)
+    vsock.auto_kill0 = False  # kill0 never confirms -> stale, as at the real first poll
+    logger = FakeLogger()
+    config = MatchConfig(
+        match_id="match-slow",
+        n_agents=2,
+        heartbeat_interval_s=10,
+        grace_period_s=GRACE_PERIOD_S,
+        max_duration_s=100,
+        archive_grace_s=0,
+        network_policy="allowlist",
+        agents=[
+            AgentEntry(slot=0, user="agent0", config="c0"),
+            AgentEntry(slot=1, user="agent1", config="c1"),
+        ],
+    )
+    ctx = MatchContext(
+        match_config=config,
+        vsock_server=vsock,
+        guest_probe_port=PROBE_PORT,
+        agent_ports={0: SHELL_PORT_0, 1: SHELL_PORT_1},
+        logger=cast(MatchLogger, logger),
+        clock=clock,
+        liveness=LivenessThresholds(silence_threshold_s=2.0, llm_max_s=300.0, kill0_max_age_s=2.0),
+        poll_interval_s=1.0,
+    )
+    schedule_boot_and_provision(vsock)
+    vsock.schedule(5.0, SHELL_PORT_1, _llm_response_env())
+    vsock.schedule(6.0, SHELL_PORT_0, _llm_response_env())
+    vsock.schedule(12.0, SHELL_PORT_1, _crash_env())
+
+    run_match(ctx)
+
+    reasons = [
+        f"{e.data.to_state}:{e.data.reason}"
+        for e in logger.envs
+        if isinstance(e.data, MatchStateChange)
+    ]
+    assert "IN_MATCH:first_llm_response" in reasons
+    assert "IN_MATCH:agent_died_pre_llm" not in reasons
 
 
 def test_s15_walkover(base_ctx: MatchContext) -> None:
