@@ -28,7 +28,7 @@ from orchestrator.match_config import AgentEntry, MatchConfig
 
 ED25519_PUBKEY_PREFIX = "ssh-ed25519 "
 EXPECTED_TEST_ARGS_LEN = 2
-_GUEST_ADDR = "10.0.2.100"
+_GUEST_ADDR = "10.0.2.2"
 
 
 def _match_cfg(network_policy: str, extra: list[str] | None = None) -> MatchConfig:

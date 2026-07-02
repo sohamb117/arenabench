@@ -172,7 +172,6 @@ def _drive_match(
         edk2_vars=edk2_vars,
         console_log=overlay_dir / "vm-console.log",
         host_ssh_port=_SSH_HOST_PORT,
-        host_egress_proxy_port=proxy.port if proxy is not None else None,
         enable_vsock=False,
         ephemeral=ephemeral,
     )

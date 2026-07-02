@@ -1,9 +1,9 @@
 """Host-side HTTP CONNECT egress proxy with domain allowlisting (plan T6).
 
 Replaces the guest's fragile IP-pinning firewall. LLM agents in the QEMU VM
-reach this proxy via slirp `guestfwd`; the proxy gates outbound HTTPS by
-DOMAIN (exact, case-insensitive), resolves each allowed host ONCE (DNS-
-rebinding defence), then tunnels ciphertext end-to-end. It never sees
+reach this proxy over the slirp gateway (10.0.2.2); the proxy gates outbound
+HTTPS by DOMAIN (exact, case-insensitive), resolves each allowed host ONCE
+(DNS-rebinding defence), then tunnels ciphertext end-to-end. It never sees
 plaintext — the guest's TLS is verified against the real target host.
 
 Runs its asyncio server on a dedicated thread so synchronous orchestrator

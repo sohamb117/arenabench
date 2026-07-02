@@ -8,10 +8,6 @@ from common.errors import LifecycleError
 Arch = Literal["aarch64", "x86_64"]
 Accel = Literal["hvf", "tcg", "auto"]
 
-# slirp address the guest uses to reach the host-side egress proxy via
-# guestfwd (empirically verified: guest 10.0.2.100:<port> -> host loopback).
-EGRESS_GUEST_ADDR = "10.0.2.100"
-
 
 class QemuProcess(Protocol):
     pid: int
@@ -36,7 +32,6 @@ class QemuConfig:
     edk2_vars: Path | None = None
     console_log: Path | None = None
     host_ssh_port: int | None = None
-    host_egress_proxy_port: int | None = None
     enable_vsock: bool = True
     ephemeral: bool = False
 
@@ -139,13 +134,9 @@ class QemuVm:
         ]
 
     def _netdev_arg(self) -> str:
-        parts = ["user", "id=net0"]
-        if self._cfg.host_ssh_port is not None:
-            parts.append(f"hostfwd=tcp::{self._cfg.host_ssh_port}-:22")
-        if self._cfg.host_egress_proxy_port is not None:
-            port = self._cfg.host_egress_proxy_port
-            parts.append(f"guestfwd=tcp:{EGRESS_GUEST_ADDR}:{port}-tcp:127.0.0.1:{port}")
-        return ",".join(parts)
+        if self._cfg.host_ssh_port is None:
+            return "user,id=net0"
+        return f"user,id=net0,hostfwd=tcp::{self._cfg.host_ssh_port}-:22"
 
     def start(self) -> None:
         if self.is_running():

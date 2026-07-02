@@ -11,7 +11,12 @@ from common.errors import ConfigError
 from orchestrator.cloudinit import GuestProxyTarget
 from orchestrator.egress_proxy import EgressProxy, ProxyConfig
 from orchestrator.match_config import AgentEntry, MatchConfig
-from orchestrator.vm import EGRESS_GUEST_ADDR
+
+# slirp gateway address: from inside the guest this reaches the host over
+# slirp's normal outbound NAT stack (reliable for sustained CONNECT tunnels,
+# unlike the chardev-backed `guestfwd` which QEMU issue #1835 shows drops
+# subsequent connections). The host-side egress proxy is reached here.
+_EGRESS_GATEWAY_ADDR = "10.0.2.2"
 
 _GUEST_SYSTEM_PROMPT_NAME = "system_prompt.txt"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -227,4 +232,4 @@ def build_egress_proxy(
     allowlist = EgressProxy.DEFAULT_ALLOWLIST | frozenset(config.domain_allowlist_extra or ())
     proxy = EgressProxy(ProxyConfig(allowlist=allowlist, log_path=log_dir / "proxy.jsonl"))
     proxy.start()
-    return proxy, GuestProxyTarget(guest_addr=EGRESS_GUEST_ADDR, port=proxy.port)
+    return proxy, GuestProxyTarget(guest_addr=_EGRESS_GATEWAY_ADDR, port=proxy.port)

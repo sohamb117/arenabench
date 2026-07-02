@@ -22,7 +22,7 @@ _AGENT_COUNT_4 = 4
 _AGENT_COUNT_2 = 2
 _ROOT_TRAVERSAL_RUNCMDS = ["chmod o+x /root", "chmod -R o+rX /root/.local"]
 _ROOT_TRAVERSAL_COUNT = len(_ROOT_TRAVERSAL_RUNCMDS)
-_PROXY = GuestProxyTarget(guest_addr="10.0.2.100", port=54321)
+_PROXY = GuestProxyTarget(guest_addr="10.0.2.2", port=54321)
 
 
 def _match_config(*, n_agents: int, network_policy: str = "allowlist") -> MatchConfig:
@@ -168,10 +168,10 @@ def test_allowlist_mode_with_proxy_renders_env_and_accept_rule() -> None:
     by_path = {cast(str, w["path"]): cast(str, w["content"]) for w in write_files}
     assert "/etc/profile.d/arenabench-proxy.sh" in by_path
     content = by_path["/etc/profile.d/arenabench-proxy.sh"]
-    assert "HTTPS_PROXY=http://10.0.2.100:54321" in content
+    assert "HTTPS_PROXY=http://10.0.2.2:54321" in content
     assert "AIOHTTP_TRUST_ENV=True" in content
     runcmd = cast(list[str], doc["runcmd"])
-    assert any("10.0.2.100" in c and "54321" in c and "ACCEPT" in c for c in runcmd)
+    assert any("10.0.2.2" in c and "54321" in c and "ACCEPT" in c for c in runcmd)
 
 
 def test_full_mode_omits_proxy_env_even_with_target() -> None:
