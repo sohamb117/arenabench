@@ -132,6 +132,35 @@ def test_build_argv_constructs_x86_64_tcg_command(tmp_path: Path) -> None:
     assert not any("pflash" in token for token in argv)
 
 
+def test_build_argv_adds_guestfwd_when_egress_proxy_port_set(tmp_path: Path) -> None:
+    """Option-B: the host-side egress proxy is reached from the guest via slirp
+    guestfwd (guest 10.0.2.100:<port> -> host 127.0.0.1:<port>).
+    """
+    base = _cfg(tmp_path)
+    cfg = QemuConfig(
+        golden_image=base.golden_image,
+        overlay_dir=base.overlay_dir,
+        arch="aarch64",
+        cid=base.cid,
+        accel="hvf",
+        seed_iso=base.seed_iso,
+        edk2_code=base.edk2_code,
+        edk2_vars=base.edk2_vars,
+        host_ssh_port=22222,
+        host_egress_proxy_port=54321,
+    )
+
+    netdev = QemuVm(cfg).build_argv()[QemuVm(cfg).build_argv().index("-netdev") + 1]
+
+    assert "hostfwd=tcp::22222-:22" in netdev
+    assert "guestfwd=tcp:10.0.2.100:54321-tcp:127.0.0.1:54321" in netdev
+
+
+def test_build_argv_omits_guestfwd_when_no_egress_proxy_port(tmp_path: Path) -> None:
+    argv = QemuVm(_cfg(tmp_path)).build_argv()
+    assert "guestfwd" not in argv[argv.index("-netdev") + 1]
+
+
 def test_build_argv_omits_vsock_when_disabled(tmp_path: Path) -> None:
     """SSH-only path on hosts without /dev/vhost-vsock must not crash QEMU at boot."""
     cfg_dict = _cfg(tmp_path)
