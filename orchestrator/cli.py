@@ -14,6 +14,7 @@ from common.clock import now_monotonic_s
 from common.errors import ConfigError
 from common.ids import make_match_id
 from orchestrator._cli_helpers import (
+    build_egress_proxy,
     detect_edk2_pflash,
     ensure_ssh_keypair,
     load_agent_blobs,
@@ -144,6 +145,7 @@ def _drive_match(
     logger = MatchLogger(log_root, match_id, config.n_agents)
     overlay_dir = log_root / "matches" / config.match_id / "vm"
     overlay_dir.mkdir(parents=True, exist_ok=True)
+    proxy, proxy_target = build_egress_proxy(config, overlay_dir.parent)
     config_blobs, prompt_blobs = load_agent_blobs(config.agents)
     agent_env_vars = resolve_agent_env_vars(config.agents)
     key_path, ssh_pubkey = ensure_ssh_keypair(overlay_dir)
@@ -153,6 +155,7 @@ def _drive_match(
         prompt_blobs=prompt_blobs,
         ssh_pubkey=ssh_pubkey,
         agent_env_vars=agent_env_vars,
+        proxy_target=proxy_target,
     )
     seed_iso = overlay_dir / "seed.iso"
     write_seed_iso(user_data=user_data, out_path=seed_iso)
@@ -169,6 +172,7 @@ def _drive_match(
         edk2_vars=edk2_vars,
         console_log=overlay_dir / "vm-console.log",
         host_ssh_port=_SSH_HOST_PORT,
+        host_egress_proxy_port=proxy.port if proxy is not None else None,
         enable_vsock=False,
         ephemeral=ephemeral,
     )
@@ -207,6 +211,8 @@ def _drive_match(
         server.stop()
         vm.terminate()
         vm.cleanup()
+        if proxy is not None:
+            proxy.stop()
 
 
 def _copy_pflash_vars(src: Path, overlay_dir: Path) -> Path:

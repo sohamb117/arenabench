@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import cast
 
 from common.errors import ConfigError
-from orchestrator.match_config import AgentEntry
+from orchestrator.cloudinit import GuestProxyTarget
+from orchestrator.egress_proxy import EgressProxy, ProxyConfig
+from orchestrator.match_config import AgentEntry, MatchConfig
+from orchestrator.vm import EGRESS_GUEST_ADDR
 
 _GUEST_SYSTEM_PROMPT_NAME = "system_prompt.txt"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -209,3 +212,19 @@ def _ssh_ready_probe(
         timeout=_SSH_READY_PROBE_TIMEOUT_S,
         check=False,
     )
+
+
+def build_egress_proxy(
+    config: MatchConfig, log_dir: Path
+) -> tuple[EgressProxy | None, GuestProxyTarget | None]:
+    """Start a host-side egress proxy for allowlist matches; (None, None) for full.
+
+    The allowlist is the built-in provider set plus any per-match extras. The
+    returned GuestProxyTarget carries the dynamic port for cloud-init + netdev.
+    """
+    if config.network_policy != "allowlist":
+        return None, None
+    allowlist = EgressProxy.DEFAULT_ALLOWLIST | frozenset(config.domain_allowlist_extra or ())
+    proxy = EgressProxy(ProxyConfig(allowlist=allowlist, log_path=log_dir / "proxy.jsonl"))
+    proxy.start()
+    return proxy, GuestProxyTarget(guest_addr=EGRESS_GUEST_ADDR, port=proxy.port)

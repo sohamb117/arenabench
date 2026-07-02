@@ -10,7 +10,7 @@ Accel = Literal["hvf", "tcg", "auto"]
 
 # slirp address the guest uses to reach the host-side egress proxy via
 # guestfwd (empirically verified: guest 10.0.2.100:<port> -> host loopback).
-_EGRESS_GUEST_ADDR = "10.0.2.100"
+EGRESS_GUEST_ADDR = "10.0.2.100"
 
 
 class QemuProcess(Protocol):
@@ -144,7 +144,7 @@ class QemuVm:
             parts.append(f"hostfwd=tcp::{self._cfg.host_ssh_port}-:22")
         if self._cfg.host_egress_proxy_port is not None:
             port = self._cfg.host_egress_proxy_port
-            parts.append(f"guestfwd=tcp:{_EGRESS_GUEST_ADDR}:{port}-tcp:127.0.0.1:{port}")
+            parts.append(f"guestfwd=tcp:{EGRESS_GUEST_ADDR}:{port}-tcp:127.0.0.1:{port}")
         return ",".join(parts)
 
     def start(self) -> None:

@@ -18,14 +18,54 @@ import pytest
 
 from common.errors import ConfigError
 from orchestrator._cli_helpers import (
+    build_egress_proxy,
     ensure_ssh_keypair,
     load_agent_blobs,
     resolve_agent_env_vars,
 )
-from orchestrator.match_config import AgentEntry
+from orchestrator.cloudinit import GuestProxyTarget
+from orchestrator.match_config import AgentEntry, MatchConfig
 
 ED25519_PUBKEY_PREFIX = "ssh-ed25519 "
 EXPECTED_TEST_ARGS_LEN = 2
+_GUEST_ADDR = "10.0.2.100"
+
+
+def _match_cfg(network_policy: str, extra: list[str] | None = None) -> MatchConfig:
+    return MatchConfig.model_validate(
+        {
+            "match_id": "demo-1v1",
+            "n_agents": 2,
+            "heartbeat_interval_s": 120,
+            "grace_period_s": 30,
+            "max_duration_s": 1800,
+            "archive_grace_s": 60,
+            "network_policy": network_policy,
+            "cgroup_limits": None,
+            "domain_allowlist_extra": extra,
+            "agents": [
+                {"slot": 0, "user": "agent0", "config": "c0.json"},
+                {"slot": 1, "user": "agent1", "config": "c1.json"},
+            ],
+        }
+    )
+
+
+def test_build_egress_proxy_allowlist_starts_proxy(tmp_path: Path) -> None:
+    proxy, target = build_egress_proxy(_match_cfg("allowlist", ["api.custom.ai"]), tmp_path)
+    try:
+        assert proxy is not None
+        assert proxy.port > 0
+        assert target == GuestProxyTarget(guest_addr=_GUEST_ADDR, port=proxy.port)
+    finally:
+        if proxy is not None:
+            proxy.stop()
+
+
+def test_build_egress_proxy_full_returns_none(tmp_path: Path) -> None:
+    proxy, target = build_egress_proxy(_match_cfg("full"), tmp_path)
+    assert proxy is None
+    assert target is None
 
 
 def _write_agent(tmp_path: Path, slot: int, *, system_prompt_path: str) -> Path:
