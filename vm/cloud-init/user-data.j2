@@ -55,6 +55,16 @@ write_files:
       export {{ k }}={{ v }}
 {% endfor %}
 {% endfor %}
+{% if proxy_target and network_policy == "allowlist" %}
+  - path: /etc/profile.d/arenabench-proxy.sh
+    owner: 'root:root'
+    permissions: '0644'
+    content: |
+      export HTTPS_PROXY=http://{{ proxy_target.guest_addr }}:{{ proxy_target.port }}
+      export HTTP_PROXY=http://{{ proxy_target.guest_addr }}:{{ proxy_target.port }}
+      export NO_PROXY=127.0.0.1,localhost
+      export AIOHTTP_TRUST_ENV=True
+{% endif %}
 runcmd:
 {% for agent in agents %}
   - chmod 0700 /home/{{ agent.user }}
@@ -67,4 +77,6 @@ runcmd:
   - iptables -P INPUT ACCEPT
   - iptables -P FORWARD ACCEPT
   - iptables -P OUTPUT ACCEPT
+{% elif proxy_target %}
+  - iptables -A OUTPUT -p tcp -d {{ proxy_target.guest_addr }} --dport {{ proxy_target.port }} -j ACCEPT
 {% endif %}

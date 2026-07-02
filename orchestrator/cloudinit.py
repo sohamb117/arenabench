@@ -29,6 +29,12 @@ class RenderedAgent:
     env_vars: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True, slots=True)
+class GuestProxyTarget:
+    guest_addr: str
+    port: int
+
+
 def _build_agents(
     match_config: MatchConfig,
     config_blobs: dict[int, str],
@@ -70,6 +76,7 @@ def render_user_data(
     prompt_blobs: dict[int, str],
     ssh_pubkey: str,
     agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
+    proxy_target: GuestProxyTarget | None = None,
     template_path: Path = _DEFAULT_TEMPLATE_PATH,
 ) -> str:
     agents = _build_agents(
@@ -87,6 +94,7 @@ def render_user_data(
         agents=agents,
         network_policy=match_config.network_policy,
         ssh_pubkey=ssh_pubkey,
+        proxy_target=proxy_target,
     )
 
 

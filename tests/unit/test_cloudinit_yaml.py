@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 import yaml
 
-from orchestrator.cloudinit import render_user_data, write_seed_iso
+from orchestrator.cloudinit import GuestProxyTarget, render_user_data, write_seed_iso
 from orchestrator.match_config import MatchConfig
 
 _HEARTBEAT = 120
@@ -22,6 +22,7 @@ _AGENT_COUNT_4 = 4
 _AGENT_COUNT_2 = 2
 _ROOT_TRAVERSAL_RUNCMDS = ["chmod o+x /root", "chmod -R o+rX /root/.local"]
 _ROOT_TRAVERSAL_COUNT = len(_ROOT_TRAVERSAL_RUNCMDS)
+_PROXY = GuestProxyTarget(guest_addr="10.0.2.100", port=54321)
 
 
 def _match_config(*, n_agents: int, network_policy: str = "allowlist") -> MatchConfig:
@@ -145,3 +146,62 @@ def test_rendered_yaml_with_network_full_appends_iptables_runcmd() -> None:
     assert _ROOT_TRAVERSAL_RUNCMDS[1] in runcmd
     assert "iptables -F" in runcmd
     assert "iptables -P INPUT ACCEPT" in runcmd
+
+
+def test_allowlist_mode_with_proxy_renders_env_and_accept_rule() -> None:
+    """Option-B: allowlist + proxy_target injects /etc/profile.d proxy env AND
+    a runtime iptables ACCEPT to the proxy address (base-deny added at boot).
+    """
+    cfg = _match_config(n_agents=_AGENT_COUNT_2, network_policy="allowlist")
+    cb, pb = _blobs(_AGENT_COUNT_2)
+
+    out = render_user_data(
+        match_config=cfg,
+        config_blobs=cb,
+        prompt_blobs=pb,
+        ssh_pubkey=_TEST_SSH_PUBKEY,
+        proxy_target=_PROXY,
+    )
+
+    doc = cast(dict[str, object], cast(object, yaml.safe_load(out)))
+    write_files = cast(list[dict[str, object]], doc["write_files"])
+    by_path = {cast(str, w["path"]): cast(str, w["content"]) for w in write_files}
+    assert "/etc/profile.d/arenabench-proxy.sh" in by_path
+    content = by_path["/etc/profile.d/arenabench-proxy.sh"]
+    assert "HTTPS_PROXY=http://10.0.2.100:54321" in content
+    assert "AIOHTTP_TRUST_ENV=True" in content
+    runcmd = cast(list[str], doc["runcmd"])
+    assert any("10.0.2.100" in c and "54321" in c and "ACCEPT" in c for c in runcmd)
+
+
+def test_full_mode_omits_proxy_env_even_with_target() -> None:
+    cfg = _match_config(n_agents=_AGENT_COUNT_2, network_policy="full")
+    cb, pb = _blobs(_AGENT_COUNT_2)
+
+    out = render_user_data(
+        match_config=cfg,
+        config_blobs=cb,
+        prompt_blobs=pb,
+        ssh_pubkey=_TEST_SSH_PUBKEY,
+        proxy_target=_PROXY,
+    )
+
+    doc = cast(dict[str, object], cast(object, yaml.safe_load(out)))
+    paths = {cast(str, w["path"]) for w in cast(list[dict[str, object]], doc["write_files"])}
+    assert "/etc/profile.d/arenabench-proxy.sh" not in paths
+    assert "iptables -F" in cast(list[str], doc["runcmd"])
+
+
+def test_allowlist_without_proxy_target_omits_env_and_rule() -> None:
+    cfg = _match_config(n_agents=_AGENT_COUNT_2, network_policy="allowlist")
+    cb, pb = _blobs(_AGENT_COUNT_2)
+
+    out = render_user_data(
+        match_config=cfg, config_blobs=cb, prompt_blobs=pb, ssh_pubkey=_TEST_SSH_PUBKEY
+    )
+
+    doc = cast(dict[str, object], cast(object, yaml.safe_load(out)))
+    paths = {cast(str, w["path"]) for w in cast(list[dict[str, object]], doc["write_files"])}
+    assert "/etc/profile.d/arenabench-proxy.sh" not in paths
+    runcmd = cast(list[str], doc["runcmd"])
+    assert not any("ACCEPT" in c for c in runcmd)
