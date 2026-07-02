@@ -16,7 +16,7 @@ This prompt is intentionally devoid of rules, tool listings, and opponent detail
 
 **v1 scaffolding complete.** Waves 0–7 of the build plan ([`.omo/plans/arenabench-build.md`](.omo/plans/arenabench-build.md)) have landed:
 
-- 290 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
+- 294 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
 - Oracle reviewer gates G1 (schemas), G2 (state machine + races), G3 (Terminus 2 fidelity), G5 (final task-complete) all cleared across 31 review rounds
 - `summary.json` is validated against [`orchestrator/schemas/summary.schema.json`](orchestrator/schemas/summary.schema.json) on every write
 - 19 e2e tests gated behind `ARENABENCH_E2E=1` — exercise the real-VM scenarios S1/S3/S4/S5/S6/S8/S11/S15/S17 (plan §14 binary observables) once you build the golden image
@@ -48,7 +48,7 @@ git clone <this repo>
 cd arenabench
 ./scripts/dev-setup.sh    # uv sync --all-groups
 ./scripts/lint.sh         # ruff + ruff format --check + basedpyright (strict)
-./scripts/test.sh         # pytest -m "not e2e"   → 290 passed
+./scripts/test.sh         # pytest -m "not e2e"   → 294 passed
 ```
 
 ### CLI
