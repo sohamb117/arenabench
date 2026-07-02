@@ -145,10 +145,10 @@ def _drive_match(
     logger = MatchLogger(log_root, match_id, config.n_agents)
     overlay_dir = log_root / "matches" / config.match_id / "vm"
     overlay_dir.mkdir(parents=True, exist_ok=True)
-    proxy, proxy_target = build_egress_proxy(config, overlay_dir.parent)
     config_blobs, prompt_blobs = load_agent_blobs(config.agents)
     agent_env_vars = resolve_agent_env_vars(config.agents)
     key_path, ssh_pubkey = ensure_ssh_keypair(overlay_dir)
+    proxy, proxy_target = build_egress_proxy(config, overlay_dir.parent)
     user_data = render_user_data(
         match_config=config,
         config_blobs=config_blobs,
