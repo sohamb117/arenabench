@@ -16,10 +16,10 @@ This prompt is intentionally devoid of rules, tool listings, and opponent detail
 
 **v1 scaffolding complete.** Waves 0–7 of the build plan ([`.omo/plans/arenabench-build.md`](.omo/plans/arenabench-build.md)) have landed:
 
-- 272 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
+- 290 unit + integration tests pass, lint clean (`ruff` + `basedpyright` strict, zero `Any`, zero `# type: ignore`)
 - Oracle reviewer gates G1 (schemas), G2 (state machine + races), G3 (Terminus 2 fidelity), G5 (final task-complete) all cleared across 31 review rounds
 - `summary.json` is validated against [`orchestrator/schemas/summary.schema.json`](orchestrator/schemas/summary.schema.json) on every write
-- 29 e2e tests gated behind `ARENABENCH_E2E=1` — exercise the real-VM scenarios S1/S3/S4/S5/S6/S8/S11/S15/S17 (plan §14 binary observables) once you build the golden image
+- 19 e2e tests gated behind `ARENABENCH_E2E=1` — exercise the real-VM scenarios S1/S3/S4/S5/S6/S8/S11/S15/S17 (plan §14 binary observables) once you build the golden image
 
 ## Quickstart
 
@@ -48,7 +48,7 @@ git clone <this repo>
 cd arenabench
 ./scripts/dev-setup.sh    # uv sync --all-groups
 ./scripts/lint.sh         # ruff + ruff format --check + basedpyright (strict)
-./scripts/test.sh         # pytest -m "not e2e"   → 272 passed
+./scripts/test.sh         # pytest -m "not e2e"   → 290 passed
 ```
 
 ### CLI
@@ -65,7 +65,7 @@ uv run arenabench run configs/matches/demo-1v1.json # spawns QEMU + SSH transpor
 uv run arenabench build-vm                          # shells out to vm/golden/build.sh
 ```
 
-The `run` subcommand requires a built golden image (`vm/images/arenabench-golden-aarch64.qcow2`); exits with code 3 if missing. It spawns QEMU with the per-match qcow2 overlay + a cloud-init seed-iso (rendered at run time from [`vm/cloud-init/user-data.j2`](vm/cloud-init/user-data.j2)) + auto-detected edk2 firmware + `hostfwd=tcp::22222-:22` for SSH ingress, then opens [`orchestrator.ssh_server.SshOrchestratorServer`](orchestrator/ssh_server.py) before driving [`orchestrator.lifecycle.run_match`](orchestrator/lifecycle.py). `build-vm` shells out to `vm/golden/build.sh` with `ARENABENCH_ARCH` passed through.
+The `run` subcommand requires a built golden image (`vm/images/arenabench-golden-aarch64.qcow2`); exits with code 3 if missing. It spawns QEMU with the per-match qcow2 overlay + a cloud-init seed-iso (rendered at run time from [`vm/cloud-init/user-data.j2`](vm/cloud-init/user-data.j2)) + auto-detected edk2 firmware + `hostfwd=tcp::22222-:22` for SSH ingress and starts a host-side domain allowlisting CONNECT proxy reached from the guest via `10.0.2.2:<port>`, then opens [`orchestrator.ssh_server.SshOrchestratorServer`](orchestrator/ssh_server.py) before driving [`orchestrator.lifecycle.run_match`](orchestrator/lifecycle.py). `build-vm` shells out to `vm/golden/build.sh` with `ARENABENCH_ARCH` passed through.
 
 ### Build the golden VM image
 
@@ -82,7 +82,7 @@ ARENABENCH_ARCH=amd64 ./vm/golden/build.sh
 ARENABENCH_DEBIAN_RELEASE=20260615-2510 ./vm/golden/build.sh
 ```
 
-The pipeline downloads the Debian generic-cloud image, packages the arenabench source as a base64-encoded tarball inside the cloud-init seed-iso, runs `customize.sh` once inside the booted VM (installs `python3`, `uv`, `tmux`, `iptables`, then creates a Python 3.12 venv at `/opt/arenabench-venv` and `uv pip install`s the harness there, installs the [iptables allowlist](vm/golden/allowlist-iptables.sh), and the guest-probe), then finalizes the qcow2 + writes `vm/images/MANIFEST.json` with SHA256 + customization manifest. Takes 5–30 min depending on host (slower on Apple Silicon TCG fallback per plan R1).
+The pipeline downloads the Debian generic-cloud image, packages the arenabench source as a base64-encoded tarball inside the cloud-init seed-iso, runs `customize.sh` once inside the booted VM (installs `python3`, `uv`, `tmux`, `iptables`, then creates a Python 3.12 venv at `/opt/arenabench-venv` and `uv pip install`s the harness there, installs the base-deny [iptables allowlist](vm/golden/allowlist-iptables.sh), and the guest-probe), then finalizes the qcow2 + writes `vm/images/MANIFEST.json` with SHA256 + customization manifest. Takes 5–30 min depending on host (slower on Apple Silicon TCG fallback per plan R1).
 
 Track the pinned point release and CVE state in [`vm/CVES.md`](vm/CVES.md).
 
@@ -151,7 +151,8 @@ host (macOS / Linux)
     │   ├── liveness.py         dual-signal alive computation (vsock-open AND kill0 AND no-silence)
     │   ├── winner.py           first-only-one + grace + draw/timeout resolver
     │   ├── logger.py           per-match JSONL + summary.json sink
-    │   ├── cloudinit.py        Jinja2 user-data renderer + cloud-localds seed-iso
+    │   ├── egress_proxy.py     host-side CONNECT proxy with domain allowlisting
+    │   ├── cloudinit.py        Jinja2 user-data renderer + seed-iso writer
     │   └── cli.py              typer entry: run | replay | validate | build-vm
     └── qemu vm (debian 12 generic-cloud)
         ├── guest_probe.py      vsock 9999 daemon: kill0 / proc_list / boot_ack
@@ -179,7 +180,7 @@ host (macOS / Linux)
 ### `vm/` — guest image build + daemons
 
 - [`golden/build.sh`](vm/golden/build.sh) + [`customize.sh`](vm/golden/customize.sh) — one-time golden image build
-- [`golden/allowlist-iptables.sh`](vm/golden/allowlist-iptables.sh) — baked outbound rules (`network_policy: "allowlist"`)
+- [`golden/allowlist-iptables.sh`](vm/golden/allowlist-iptables.sh) — baked base-deny firewall; per-match cloud-init allows only the host-side CONNECT proxy for `network_policy: "allowlist"`
 - [`cloud-init/user-data.j2`](vm/cloud-init/user-data.j2) — per-match cloud-init template
 - [`guest_probe.py`](vm/guest_probe.py) — root daemon on vsock 9999 answering `kill0` / `proc_list` / `boot_ack`
 - [`CVES.md`](vm/CVES.md) — pinned Debian point-release CVE inventory
