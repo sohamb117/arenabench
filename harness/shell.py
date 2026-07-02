@@ -95,10 +95,18 @@ class TmuxShell:
 
         if is_blocking:
             token = f"arenabench-done-{uuid.uuid4().hex[:8]}"
-            self._send_command(f'{keystrokes}; echo "{_RC_PREFIX}$?"; tmux wait -S {token}')
-            self._run_tmux(["wait", token], timeout_s=wait_timeout_s)
-            raw_output = self.capture_pane()
-            output, exit_status = self._extract_status(raw_output)
+            marker = f"{_RC_PREFIX}{token}__"
+            self._send_command(f'{keystrokes}; echo "{marker}$?"; tmux wait -S {token}')
+            try:
+                self._run_tmux(["wait", token], timeout_s=wait_timeout_s)
+            except LifecycleError:
+                raw_output = self.capture_pane()
+                output, exit_status = self._extract_status(raw_output, marker)
+                if exit_status is None:
+                    raise
+            else:
+                raw_output = self.capture_pane()
+                output, exit_status = self._extract_status(raw_output, marker)
         else:
             self._send_command(keystrokes)
             self._sleep_remaining(duration_sec, started_s)
@@ -171,8 +179,8 @@ class TmuxShell:
             time.sleep(remaining_s)
 
     @staticmethod
-    def _extract_status(output: str) -> tuple[str, int | None]:
-        matches = list(re.finditer(rf"^{_RC_PREFIX}(\d+)$", output, flags=re.MULTILINE))
+    def _extract_status(output: str, marker: str) -> tuple[str, int | None]:
+        matches = list(re.finditer(rf"^{re.escape(marker)}(\d+)$", output, flags=re.MULTILINE))
         if not matches:
             return output, None
         match = matches[-1]
