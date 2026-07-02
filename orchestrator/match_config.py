@@ -42,6 +42,7 @@ class MatchConfig(pydantic.BaseModel):
     archive_grace_s: int = pydantic.Field(default=60, ge=0, le=3600)
     network_policy: Literal["allowlist", "full"] = "allowlist"
     cgroup_limits: CgroupLimits | None = None
+    domain_allowlist_extra: tuple[str, ...] | None = None
     agents: list[AgentEntry]
 
     @pydantic.field_validator("match_id")
@@ -51,6 +52,17 @@ class MatchConfig(pydantic.BaseModel):
             return str(make_match_id(value))
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
+
+    @pydantic.field_validator("domain_allowlist_extra")
+    @classmethod
+    def _validate_domain_allowlist_extra(
+        cls, value: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        if value is None:
+            return None
+        if any(not host.strip() for host in value):
+            raise ValueError("domain_allowlist_extra entries must be non-empty")
+        return value
 
     @pydantic.field_validator("agents")
     @classmethod

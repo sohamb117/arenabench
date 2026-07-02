@@ -35,6 +35,7 @@ def _base_payload(
     agents: list[dict[str, object]],
     network_policy: str = _NETWORK_POLICY_ALLOWLIST,
     cgroup_limits: dict[str, int] | None = None,
+    domain_allowlist_extra: list[str] | None = None,
 ) -> dict[str, object]:
     return {
         "match_id": _MATCH_ID,
@@ -45,6 +46,7 @@ def _base_payload(
         "archive_grace_s": _ARCHIVE_GRACE_S,
         "network_policy": network_policy,
         "cgroup_limits": cgroup_limits,
+        "domain_allowlist_extra": domain_allowlist_extra,
         "agents": agents,
     }
 
@@ -91,6 +93,25 @@ def test_valid_2_agent_config_parses_and_round_trips(tmp_path: pathlib.Path) -> 
     # Then
     assert cfg.model_dump(mode="json") == _valid_2_agent_payload()
     assert MatchConfig.model_validate(cfg.model_dump(mode="json")) == cfg
+
+
+def test_domain_allowlist_extra_defaults_none(tmp_path: pathlib.Path) -> None:
+    cfg = load_match_config(_write_match(tmp_path, _valid_2_agent_payload()))
+    assert cfg.domain_allowlist_extra is None
+
+
+def test_domain_allowlist_extra_parses_list_to_tuple(tmp_path: pathlib.Path) -> None:
+    payload = _valid_2_agent_payload()
+    payload["domain_allowlist_extra"] = ["api.custom.ai", "llm.internal.corp"]
+    cfg = load_match_config(_write_match(tmp_path, payload, "extra.json"))
+    assert cfg.domain_allowlist_extra == ("api.custom.ai", "llm.internal.corp")
+
+
+def test_domain_allowlist_extra_rejects_empty_entry(tmp_path: pathlib.Path) -> None:
+    payload = _valid_2_agent_payload()
+    payload["domain_allowlist_extra"] = ["ok.com", ""]
+    with pytest.raises(ConfigError):
+        load_match_config(_write_match(tmp_path, payload, "bad.json"))
 
 
 def test_valid_4_agent_config_parses_with_slots_0_to_3(tmp_path: pathlib.Path) -> None:
