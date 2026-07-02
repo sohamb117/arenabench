@@ -1,10 +1,11 @@
 {
-  "model": "anthropic/claude-sonnet-4-6",
+  "model": "anthropic/claude-opus-4-7",
   "temperature": 0.0,
   "max_tokens": 256,
   "request_timeout_s": 60,
   "num_retries": 3,
   "fallbacks": null,
+  "reasoning_effort": "medium",
   "parser": "json",
   "api_key_env": "ANTHROPIC_API_KEY",
   "system_prompt_path": "configs/prompts/passive.txt"

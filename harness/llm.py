@@ -67,6 +67,7 @@ class _LiteLlmCompletion(Protocol):
         fallbacks: list[str] | None,
         drop_params: bool,
         max_tokens: int,
+        reasoning_effort: str | None = None,
         api_key: str | None = None,
     ) -> object: ...
 
@@ -80,6 +81,7 @@ def call(
     timeout_s: float,
     num_retries: int,
     fallbacks: list[str] | None,
+    reasoning_effort: str | None = None,
     api_key: str | None = None,
     mock_response: str | None = None,
     on_attempt: Callable[[int], None] | None = None,
@@ -131,6 +133,7 @@ def call(
                     fallbacks=fallbacks or None,
                     drop_params=True,
                     max_tokens=max_tokens,
+                    reasoning_effort=reasoning_effort,
                 )
             else:
                 raw_response = completion(
@@ -142,6 +145,7 @@ def call(
                     fallbacks=fallbacks or None,
                     drop_params=True,
                     max_tokens=max_tokens,
+                    reasoning_effort=reasoning_effort,
                     api_key=api_key,
                 )
             response = cast(_CompletionResponse, raw_response)

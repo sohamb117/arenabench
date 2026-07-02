@@ -206,6 +206,7 @@ def _llm_turn(
         timeout_s=float(cfg.request_timeout_s),
         num_retries=cfg.num_retries,
         fallbacks=cfg.fallbacks,
+        reasoning_effort=cfg.reasoning_effort,
         api_key=api_key,
         mock_response=cfg.mock_response,
         on_attempt=_emit_attempt,

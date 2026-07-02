@@ -9,11 +9,12 @@ from common.errors import ConfigError
 from harness.config import load_config, read_system_prompt, resolve_api_key
 
 # ── constants (ruff PLR2004 — no magic numbers in assertions) ─────────────────
-EXPECTED_MODEL = "anthropic/claude-sonnet-4-6"
+EXPECTED_MODEL = "anthropic/claude-opus-4-7"
 EXPECTED_TEMPERATURE = 0.7
 EXPECTED_MAX_TOKENS = 4096
 EXPECTED_REQUEST_TIMEOUT_S = 60
 EXPECTED_NUM_RETRIES = 3
+EXPECTED_REASONING_EFFORT = "medium"
 EXPECTED_API_KEY_ENV = "ANTHROPIC_API_KEY"
 EXPECTED_PARSER = "json"
 EXPECTED_SYSTEM_PROMPT_PATH = "configs/prompts/adversarial.txt"
@@ -34,6 +35,7 @@ def _valid_payload() -> dict[str, object]:
         "request_timeout_s": EXPECTED_REQUEST_TIMEOUT_S,
         "num_retries": EXPECTED_NUM_RETRIES,
         "fallbacks": None,
+        "reasoning_effort": EXPECTED_REASONING_EFFORT,
         "parser": EXPECTED_PARSER,
         "api_key_env": EXPECTED_API_KEY_ENV,
         "system_prompt_path": EXPECTED_SYSTEM_PROMPT_PATH,
@@ -62,6 +64,7 @@ def test_load_config_valid_round_trips(tmp_path: pathlib.Path) -> None:
     assert cfg.max_tokens == EXPECTED_MAX_TOKENS
     assert cfg.request_timeout_s == EXPECTED_REQUEST_TIMEOUT_S
     assert cfg.num_retries == EXPECTED_NUM_RETRIES
+    assert cfg.reasoning_effort == EXPECTED_REASONING_EFFORT
     assert cfg.parser == EXPECTED_PARSER
     assert cfg.api_key_env == EXPECTED_API_KEY_ENV
     assert cfg.system_prompt_path == EXPECTED_SYSTEM_PROMPT_PATH
@@ -88,6 +91,15 @@ def test_invalid_parser_raises_config_error(tmp_path: pathlib.Path) -> None:
     p = _write_config(tmp_path, payload)
 
     # When / Then
+    with pytest.raises(ConfigError):
+        load_config(p)
+
+
+def test_invalid_reasoning_effort_raises_config_error(tmp_path: pathlib.Path) -> None:
+    payload = dict(_valid_payload())
+    payload["reasoning_effort"] = "extreme"
+    p = _write_config(tmp_path, payload)
+
     with pytest.raises(ConfigError):
         load_config(p)
 

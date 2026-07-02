@@ -9,6 +9,7 @@ import pydantic
 from common.errors import ConfigError
 
 _ENV_KEY_PATTERN = r"^[A-Z][A-Z0-9_]*$"
+_ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "default"]
 
 
 class AgentConfig(pydantic.BaseModel):
@@ -22,6 +23,7 @@ class AgentConfig(pydantic.BaseModel):
     request_timeout_s: Annotated[int, pydantic.Field(ge=1, le=600)]
     num_retries: Annotated[int, pydantic.Field(ge=0, le=10)]
     fallbacks: list[str] | None = None
+    reasoning_effort: _ReasoningEffort | None = None
     parser: Literal["json", "xml"] = "json"
     api_key_env: Annotated[str, pydantic.Field(pattern=_ENV_KEY_PATTERN)]
     system_prompt_path: str

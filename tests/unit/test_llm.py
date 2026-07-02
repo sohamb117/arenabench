@@ -64,6 +64,7 @@ def test_call_returns_usage_cost_and_content_when_litellm_succeeds() -> None:
         fallbacks=[FALLBACK_MODEL],
         drop_params=True,
         max_tokens=MAX_TOKENS,
+        reasoning_effort=None,
     )
 
 
@@ -157,6 +158,26 @@ def test_call_passes_api_key_when_provided() -> None:
 
     completion.assert_called_once()
     assert completion.call_args.kwargs["api_key"] == API_KEY
+
+
+def test_call_passes_reasoning_effort_when_provided() -> None:
+    with (
+        patch("harness.llm.litellm.completion", return_value=make_response()) as completion,
+        patch("harness.llm.litellm.completion_cost", return_value=COST_USD),
+    ):
+        call(
+            model=MODEL,
+            messages=MESSAGES,
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            timeout_s=TIMEOUT_S,
+            num_retries=NUM_RETRIES,
+            fallbacks=[FALLBACK_MODEL],
+            reasoning_effort="medium",
+        )
+
+    completion.assert_called_once()
+    assert completion.call_args.kwargs["reasoning_effort"] == "medium"
 
 
 def test_call_raises_llm_call_error_for_bad_request_error() -> None:
