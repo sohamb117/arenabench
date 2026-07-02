@@ -148,41 +148,44 @@ def _drive_match(
     config_blobs, prompt_blobs = load_agent_blobs(config.agents)
     agent_env_vars = resolve_agent_env_vars(config.agents)
     key_path, ssh_pubkey = ensure_ssh_keypair(overlay_dir)
-    proxy, proxy_target = build_egress_proxy(config, overlay_dir.parent)
-    user_data = render_user_data(
-        match_config=config,
-        config_blobs=config_blobs,
-        prompt_blobs=prompt_blobs,
-        ssh_pubkey=ssh_pubkey,
-        agent_env_vars=agent_env_vars,
-        proxy_target=proxy_target,
-    )
-    seed_iso = overlay_dir / "seed.iso"
-    write_seed_iso(user_data=user_data, out_path=seed_iso)
-    edk2_code, edk2_vars_src = detect_edk2_pflash() if arch == "aarch64" else (None, None)
-    edk2_vars = _copy_pflash_vars(edk2_vars_src, overlay_dir) if edk2_vars_src else None
-    qemu_cfg = QemuConfig(
-        golden_image=golden_image,
-        overlay_dir=overlay_dir,
-        arch=arch,
-        cid=3,
-        accel=detect_accel(),
-        seed_iso=seed_iso,
-        edk2_code=edk2_code,
-        edk2_vars=edk2_vars,
-        console_log=overlay_dir / "vm-console.log",
-        host_ssh_port=_SSH_HOST_PORT,
-        enable_vsock=False,
-        ephemeral=ephemeral,
-    )
-    vm = QemuVm(qemu_cfg)
-    server = SshOrchestratorServer(
-        agents=list(config.agents),
-        ssh_host="127.0.0.1",
-        ssh_port=_SSH_HOST_PORT,
-        key_path=key_path,
-    )
+    proxy = None
+    vm = None
+    server = None
     try:
+        proxy, proxy_target = build_egress_proxy(config, overlay_dir.parent)
+        user_data = render_user_data(
+            match_config=config,
+            config_blobs=config_blobs,
+            prompt_blobs=prompt_blobs,
+            ssh_pubkey=ssh_pubkey,
+            agent_env_vars=agent_env_vars,
+            proxy_target=proxy_target,
+        )
+        seed_iso = overlay_dir / "seed.iso"
+        write_seed_iso(user_data=user_data, out_path=seed_iso)
+        edk2_code, edk2_vars_src = detect_edk2_pflash() if arch == "aarch64" else (None, None)
+        edk2_vars = _copy_pflash_vars(edk2_vars_src, overlay_dir) if edk2_vars_src else None
+        qemu_cfg = QemuConfig(
+            golden_image=golden_image,
+            overlay_dir=overlay_dir,
+            arch=arch,
+            cid=3,
+            accel=detect_accel(),
+            seed_iso=seed_iso,
+            edk2_code=edk2_code,
+            edk2_vars=edk2_vars,
+            console_log=overlay_dir / "vm-console.log",
+            host_ssh_port=_SSH_HOST_PORT,
+            enable_vsock=False,
+            ephemeral=ephemeral,
+        )
+        vm = QemuVm(qemu_cfg)
+        server = SshOrchestratorServer(
+            agents=list(config.agents),
+            ssh_host="127.0.0.1",
+            ssh_port=_SSH_HOST_PORT,
+            key_path=key_path,
+        )
         vm.create_overlay()
         vm.start()
         wait_for_ssh_ready(
@@ -207,9 +210,11 @@ def _drive_match(
         )
         return run_match(ctx)
     finally:
-        server.stop()
-        vm.terminate()
-        vm.cleanup()
+        if server is not None:
+            server.stop()
+        if vm is not None:
+            vm.terminate()
+            vm.cleanup()
         if proxy is not None:
             proxy.stop()
 

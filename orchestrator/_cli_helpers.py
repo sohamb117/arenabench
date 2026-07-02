@@ -229,7 +229,8 @@ def build_egress_proxy(
     """
     if config.network_policy != "allowlist":
         return None, None
-    allowlist = EgressProxy.DEFAULT_ALLOWLIST | frozenset(config.domain_allowlist_extra or ())
+    extra = frozenset(host.strip().lower() for host in (config.domain_allowlist_extra or ()))
+    allowlist = EgressProxy.DEFAULT_ALLOWLIST | extra
     proxy = EgressProxy(ProxyConfig(allowlist=allowlist, log_path=log_dir / "proxy.jsonl"))
     proxy.start()
     return proxy, GuestProxyTarget(guest_addr=_EGRESS_GATEWAY_ADDR, port=proxy.port)

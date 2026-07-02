@@ -102,7 +102,7 @@ def test_domain_allowlist_extra_defaults_none(tmp_path: pathlib.Path) -> None:
 
 def test_domain_allowlist_extra_parses_list_to_tuple(tmp_path: pathlib.Path) -> None:
     payload = _valid_2_agent_payload()
-    payload["domain_allowlist_extra"] = ["api.custom.ai", "llm.internal.corp"]
+    payload["domain_allowlist_extra"] = [" API.Custom.AI ", "llm.internal.corp"]
     cfg = load_match_config(_write_match(tmp_path, payload, "extra.json"))
     assert cfg.domain_allowlist_extra == ("api.custom.ai", "llm.internal.corp")
 

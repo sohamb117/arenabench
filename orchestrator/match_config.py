@@ -62,7 +62,7 @@ class MatchConfig(pydantic.BaseModel):
             return None
         if any(not host.strip() for host in value):
             raise ValueError("domain_allowlist_extra entries must be non-empty")
-        return value
+        return tuple(host.strip().lower() for host in value)
 
     @pydantic.field_validator("agents")
     @classmethod

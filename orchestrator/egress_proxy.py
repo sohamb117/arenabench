@@ -29,6 +29,7 @@ _IDLE_TIMEOUT_S = 60.0
 _TOTAL_TIMEOUT_S = 900.0
 _START_TIMEOUT_S = 10.0
 _STOP_TIMEOUT_S = 10.0
+_HTTPS_PORT = 443
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +113,13 @@ class EgressProxy:
             return
         host, port = parsed
         await io.drain_headers(reader, self._cfg.header_timeout_s)
-        if host.lower() not in self._cfg.allowlist:
+        normalized_host = host.lower()
+        if normalized_host not in self._cfg.allowlist:
             self._log("deny", host, port)
+            await io.respond(writer, b"403 Forbidden")
+            return
+        if port != _HTTPS_PORT:
+            self._log("deny", host, port, reason="unsupported_port")
             await io.respond(writer, b"403 Forbidden")
             return
         await self._connect_and_tunnel(reader, writer, host, port)
@@ -125,21 +131,17 @@ class EgressProxy:
         host: str,
         port: int,
     ) -> None:
-        addr = await self._resolve_once(host, port)
-        if addr is None:
+        candidates = await self._resolve_once(host, port)
+        if not candidates:
             self._log("error", host, port, reason="resolve_failed")
             await io.respond(writer, b"502 Bad Gateway")
             return
-        family, ip = addr
-        try:
-            up_reader, up_writer = await asyncio.wait_for(
-                asyncio.open_connection(host=ip, port=port, family=family),
-                self._cfg.header_timeout_s,
-            )
-        except (OSError, TimeoutError):
-            self._log("error", host, port, reason="connect_failed", ip=ip)
+        upstream = await self.connect_upstream(candidates, port)
+        if upstream is None:
+            self._log("error", host, port, reason="connect_failed")
             await io.respond(writer, b"502 Bad Gateway")
             return
+        ip, up_reader, up_writer = upstream
         self._log("allow", host, port, ip=ip)
         await io.respond(writer, b"200 Connection established")
         await io.tunnel(
@@ -151,21 +153,35 @@ class EgressProxy:
             total_s=self._cfg.total_timeout_s,
         )
 
-    async def _resolve_once(self, host: str, port: int) -> tuple[int, str] | None:
-        """Resolve host ONCE and return (family, ip). Connecting to the literal
-        IP (not the hostname) is the DNS-rebinding defence: the attacker cannot
-        swap the A record between the allowlist check and the TCP connect.
+    async def _resolve_once(self, host: str, port: int) -> list[tuple[int, str]]:
+        """Resolve host ONCE and return all (family, ip) candidates.
+
+        Connecting to one of these literal IPs (not the hostname) is the DNS-
+        rebinding defence: the target cannot change between allowlist check and
+        TCP connect. Trying every candidate handles IPv6-first DNS on hosts with
+        IPv4-only reachability.
         """
         try:
             infos = await asyncio.get_running_loop().getaddrinfo(
                 host, port, type=socket.SOCK_STREAM
             )
         except OSError:
-            return None
-        if not infos:
-            return None
-        family, _, _, _, sockaddr = infos[0]
-        return int(family), str(sockaddr[0])
+            return []
+        return [(int(family), str(sockaddr[0])) for family, _, _, _, sockaddr in infos]
+
+    async def connect_upstream(
+        self, candidates: list[tuple[int, str]], port: int
+    ) -> tuple[str, asyncio.StreamReader, asyncio.StreamWriter] | None:
+        for family, ip in candidates:
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host=ip, port=port, family=family),
+                    self._cfg.header_timeout_s,
+                )
+                return ip, reader, writer
+            except (OSError, TimeoutError):
+                continue
+        return None
 
     def _log(self, event: str, host: str, port: int, **extra: object) -> None:
         entry: dict[str, object] = {

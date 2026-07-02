@@ -8,6 +8,7 @@ sockets against the proxy's real bound port + a fake upstream TCP echo server.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 import threading
@@ -86,6 +87,17 @@ def _connect_request(proxy_port: int, target: str, body: bytes = b"") -> bytes:
         return b"".join(chunks)
 
 
+def _patch_upstream(monkeypatch: pytest.MonkeyPatch, upstream: _Upstream) -> None:
+    async def fake_open_upstream(
+        self: EgressProxy, candidates: list[tuple[int, str]], port: int
+    ) -> tuple[str, asyncio.StreamReader, asyncio.StreamWriter] | None:
+        _ = (self, candidates, port)
+        reader, writer = await asyncio.open_connection("127.0.0.1", upstream.port)
+        return "127.0.0.1", reader, writer
+
+    monkeypatch.setattr(EgressProxy, "connect_upstream", fake_open_upstream)
+
+
 def test_default_allowlist_has_five_providers() -> None:
     assert len(EgressProxy.DEFAULT_ALLOWLIST) == _EXPECTED_PROVIDERS
     assert "api.anthropic.com" in EgressProxy.DEFAULT_ALLOWLIST
@@ -101,10 +113,13 @@ def test_start_binds_dynamic_port_and_stop_is_clean(tmp_path: Path) -> None:
         socket.create_connection(("127.0.0.1", proxy.port), timeout=1.0)
 
 
-def test_allowed_host_tunnels_bytes(tmp_path: Path, upstream: _Upstream) -> None:
+def test_allowed_host_tunnels_bytes(
+    tmp_path: Path, upstream: _Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_upstream(monkeypatch, upstream)
     host = "127.0.0.1"
     for proxy in _make_proxy(tmp_path, frozenset({host})):
-        target = f"{host}:{upstream.port}"
+        target = f"{host}:443"
         resp = _connect_request(proxy.port, target, body=b"ping")
         assert resp.startswith(_HTTP_200), resp
         assert b"ECHO:ping" in resp, resp
@@ -116,13 +131,48 @@ def test_disallowed_host_returns_403(tmp_path: Path, upstream: _Upstream) -> Non
         assert resp.startswith(_HTTP_403), resp
 
 
+def test_allowed_host_with_non_https_port_returns_403(tmp_path: Path, upstream: _Upstream) -> None:
+    for proxy in _make_proxy(tmp_path, frozenset({"127.0.0.1"})):
+        resp = _connect_request(proxy.port, f"127.0.0.1:{upstream.port}")
+        assert resp.startswith(_HTTP_403), resp
+
+
 def test_allowlist_match_is_case_insensitive(tmp_path: Path, upstream: _Upstream) -> None:
     for proxy in _make_proxy(tmp_path, frozenset({"localhost"})):
         with socket.create_connection(("127.0.0.1", proxy.port), timeout=_CONNECT_TIMEOUT_S) as s:
-            s.sendall(f"CONNECT LOCALHOST:{upstream.port} HTTP/1.1\r\n\r\n".encode())
+            s.sendall(b"CONNECT LOCALHOST:443 HTTP/1.1\r\n\r\n")
             s.settimeout(_CONNECT_TIMEOUT_S)
             resp = s.recv(256)
-        assert resp.startswith(_HTTP_200), resp
+        assert not resp.startswith(_HTTP_403), resp
+
+
+@pytest.mark.asyncio
+async def test_open_upstream_tries_later_resolved_address(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proxy = EgressProxy(ProxyConfig(allowlist=frozenset(), log_path=tmp_path / "p.jsonl"))
+    attempts: list[str] = []
+
+    async def fake_open_connection(
+        *, host: str, port: int, family: int
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        _ = (port, family)
+        attempts.append(host)
+        if host == "::1":
+            raise OSError("ipv6 unreachable")
+        return cast(
+            tuple[asyncio.StreamReader, asyncio.StreamWriter],
+            (asyncio.StreamReader(), object()),
+        )
+
+    monkeypatch.setattr(asyncio, "open_connection", fake_open_connection)
+
+    result = await proxy.connect_upstream(
+        [(socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")], 443
+    )
+
+    assert result is not None
+    assert attempts == ["::1", "127.0.0.1"]
 
 
 def test_malformed_connect_line_returns_400(tmp_path: Path) -> None:
@@ -143,12 +193,15 @@ def test_ipv6_target_is_parsed(tmp_path: Path) -> None:
         assert not resp.startswith(_HTTP_400), resp
 
 
-def test_decisions_are_logged_as_jsonl(tmp_path: Path, upstream: _Upstream) -> None:
+def test_decisions_are_logged_as_jsonl(
+    tmp_path: Path, upstream: _Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_upstream(monkeypatch, upstream)
     log_path = tmp_path / "proxy.jsonl"
     proxy = EgressProxy(ProxyConfig(allowlist=frozenset({"127.0.0.1"}), log_path=log_path))
     proxy.start()
     try:
-        _connect_request(proxy.port, f"127.0.0.1:{upstream.port}", body=b"x")
+        _connect_request(proxy.port, "127.0.0.1:443", body=b"x")
         _connect_request(proxy.port, "blocked.example.com:443")
     finally:
         proxy.stop()

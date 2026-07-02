@@ -6,7 +6,10 @@ from typing import cast
 import pytest
 from typer.testing import CliRunner
 
+from orchestrator import cli as cli_module
 from orchestrator.cli import app
+from orchestrator.cloudinit import GuestProxyTarget
+from orchestrator.match_config import AgentEntry, MatchConfig
 
 _HEARTBEAT = 120
 _GRACE = 30
@@ -106,6 +109,72 @@ def test_run_command_reports_missing_golden_image(
 
     assert result.exit_code == _EXIT_RUNTIME_ERROR
     assert "golden image missing" in (result.output + (result.stderr or ""))
+
+
+def test_run_stops_proxy_when_render_user_data_fails(
+    runner: CliRunner, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stopped: list[str] = []
+
+    class FakeProxy:
+        port = 12345
+
+        def stop(self) -> None:
+            stopped.append("proxy.stop")
+
+    def fake_load_agent_blobs(
+        agents: list[AgentEntry],
+    ) -> tuple[dict[int, str], dict[int, str]]:
+        _ = agents
+        return {0: "{}", 1: "{}"}, {0: "p", 1: "p"}
+
+    def fake_resolve_agent_env_vars(
+        agents: list[AgentEntry],
+    ) -> dict[int, tuple[tuple[str, str], ...]]:
+        _ = agents
+        return {}
+
+    def fake_ensure_ssh_keypair(overlay_dir: pathlib.Path) -> tuple[pathlib.Path, str]:
+        _ = overlay_dir
+        return tmp_path / "ssh_key", "ssh-ed25519 test"
+
+    def fake_build_egress_proxy(
+        cfg: MatchConfig, log_dir: pathlib.Path
+    ) -> tuple[FakeProxy, GuestProxyTarget]:
+        _ = (cfg, log_dir)
+        return FakeProxy(), GuestProxyTarget("10.0.2.2", 12345)
+
+    monkeypatch.setattr(cli_module, "load_agent_blobs", fake_load_agent_blobs)
+    monkeypatch.setattr(cli_module, "resolve_agent_env_vars", fake_resolve_agent_env_vars)
+    monkeypatch.setattr(
+        cli_module,
+        "ensure_ssh_keypair",
+        fake_ensure_ssh_keypair,
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "build_egress_proxy",
+        fake_build_egress_proxy,
+    )
+
+    def boom(**_: object) -> str:
+        raise RuntimeError("render failed")
+
+    monkeypatch.setattr(cli_module, "render_user_data", boom)
+
+    path = tmp_path / "match.json"
+    path.write_text(json.dumps(_valid_match_payload()), encoding="utf-8")
+    golden = tmp_path / "golden.qcow2"
+    golden.write_bytes(b"qcow2-placeholder")
+
+    with pytest.raises(RuntimeError, match="render failed"):
+        runner.invoke(
+            app,
+            ["run", str(path), "--log-root", str(tmp_path), "--golden-image", str(golden)],
+            catch_exceptions=False,
+        )
+
+    assert stopped == ["proxy.stop"]
 
 
 def test_build_vm_shells_out_to_build_script(
