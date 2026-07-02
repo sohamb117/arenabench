@@ -9,7 +9,7 @@ from common.errors import ConfigError
 from harness.config import load_config, read_system_prompt, resolve_api_key
 
 # ── constants (ruff PLR2004 — no magic numbers in assertions) ─────────────────
-EXPECTED_MODEL = "anthropic/claude-3-5-sonnet-20241022"
+EXPECTED_MODEL = "anthropic/claude-sonnet-4-6"
 EXPECTED_TEMPERATURE = 0.7
 EXPECTED_MAX_TOKENS = 4096
 EXPECTED_REQUEST_TIMEOUT_S = 60
