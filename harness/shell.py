@@ -102,8 +102,6 @@ class TmuxShell:
             except LifecycleError:
                 raw_output = self.capture_pane()
                 output, exit_status = self._extract_status(raw_output, marker)
-                if exit_status is None:
-                    raise
             else:
                 raw_output = self.capture_pane()
                 output, exit_status = self._extract_status(raw_output, marker)
