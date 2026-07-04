@@ -99,7 +99,6 @@ class AgentState:
     def to_scheduler(self) -> AgentSchedulerState:
         return AgentSchedulerState(
             slot=cast(AgentSlot, self.slot),
-            last_activity_ts_monotonic=self.last_frame_ts,
             last_heartbeat_ts_monotonic=self.last_heartbeat_ts,
             llm_call_in_flight=self.llm_call_start_ts is not None,
         )
