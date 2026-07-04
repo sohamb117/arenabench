@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
-from common.errors import LifecycleError
 from harness.chat import Chat
 from harness.heartbeat import format_heartbeat, inject
 
@@ -29,7 +26,6 @@ def _chat(roles: list[str]) -> Chat:
         return chat
 
     raise ValueError(f"unsupported role sequence: {roles}")
-    return chat
 
 
 def test_format_heartbeat_rounds_elapsed_seconds() -> None:
@@ -57,16 +53,25 @@ def test_inject_appends_user_heartbeat_when_last_role_is_assistant() -> None:
     assert chat.history[-1].content.startswith("[HEARTBEAT t=")
 
 
-def test_inject_raises_when_last_role_is_user_and_keeps_history() -> None:
+def test_inject_merges_into_last_user_turn_when_last_role_is_user() -> None:
+    """Regression: user-last ticks used to be dropped silently by
+    _handle_inbound, so real matches saw 0 heartbeat_injected frames
+    (chat is user-last ~99% of the time between bash_result and next
+    LLM call). Fix: merge the heartbeat text into the last user turn,
+    preserving the alternating-role invariant.
+    """
     chat = _chat(["assistant", "user"])
-    before = chat.history
+    before_history_len = len(chat.history)
+    before_last_content = chat.history[-1].content
 
-    with pytest.raises(LifecycleError) as exc_info:
-        inject(chat, ELAPSED_ROUNDING_INPUT, TURN_COUNT)
+    injected = inject(chat, ELAPSED_ROUNDING_INPUT, TURN_COUNT)
 
-    assert chat.history == before
-    assert exc_info.value.state == "user"
-    assert exc_info.value.event == "heartbeat_inject"
+    assert injected == format_heartbeat(ELAPSED_ROUNDING_INPUT, TURN_COUNT)
+    assert len(chat.history) == before_history_len
+    assert chat.history[-1].role == "user"
+    assert chat.history[-1].content.startswith(before_last_content)
+    assert chat.history[-1].content.endswith(injected)
+    assert "\n\n" in chat.history[-1].content
 
 
 def test_inject_returns_exact_injected_string() -> None:

@@ -79,6 +79,23 @@ class Chat:
             )
         self._messages.append(Message(role="assistant", content=content))
 
+    def merge_into_last_user(self, extra: str) -> None:
+        """Append `extra` to the last user message's content in place.
+
+        Used by heartbeat injection when a tick arrives while the chat is
+        already user-last (bash_result appended, next LLM call not yet made).
+        Preserves the alternating-role invariant that a plain append_user
+        would violate.
+        """
+        if not self._messages or self._messages[-1].role != "user":
+            raise LifecycleError(
+                "Cannot merge into last user message: last role is not user",
+                state=self._messages[-1].role if self._messages else "empty",
+                event="merge_into_last_user",
+            )
+        last = self._messages[-1]
+        self._messages[-1] = Message(role="user", content=last.content + extra)
+
     def truncate_terminal_output(self, raw: str) -> str:
         """Returns head + truncation marker + tail when raw > truncate bytes."""
         raw_bytes = raw.encode()

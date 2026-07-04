@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from common.errors import LifecycleError
 from harness.chat import Chat
 
 HEARTBEAT_PREFIX = "[HEARTBEAT t={elapsed_s}s turn={turn_count}] continue, the match is still live."
+_MERGE_SEPARATOR = "\n\n"
 
 
 def format_heartbeat(elapsed_s: float, turn_count: int) -> str:
@@ -11,14 +11,10 @@ def format_heartbeat(elapsed_s: float, turn_count: int) -> str:
 
 
 def inject(chat: Chat, elapsed_s: float, turn_count: int) -> str:
+    heartbeat = format_heartbeat(elapsed_s, turn_count)
     history = chat.history
     if history and history[-1].role == "user":
-        raise LifecycleError(
-            "heartbeat injection blocked",
-            state=history[-1].role,
-            event="heartbeat_inject",
-        )
-
-    heartbeat = format_heartbeat(elapsed_s, turn_count)
-    chat.append_user(heartbeat)
+        chat.merge_into_last_user(f"{_MERGE_SEPARATOR}{heartbeat}")
+    else:
+        chat.append_user(heartbeat)
     return heartbeat

@@ -153,3 +153,35 @@ def test_prompt_tokens() -> None:
     msg = [{"role": "user", "content": _INITIAL_PROMPT}]
     expected = litellm.token_counter(model=_MODEL, messages=msg)
     assert chat.prompt_tokens == expected
+
+
+def test_merge_into_last_user_appends_to_existing_user_content() -> None:
+    chat = Chat(
+        initial_user_prompt=_INITIAL_PROMPT,
+        model=_MODEL,
+        max_context_tokens=_MAX_TOKENS,
+    )
+    chat.append_assistant("assistant reply")
+    chat.append_user("bash result")
+    before_len = len(chat.history)
+
+    chat.merge_into_last_user("\n\n[HEARTBEAT t=5s turn=1] continue")
+
+    assert len(chat.history) == before_len
+    assert chat.history[-1].role == "user"
+    assert chat.history[-1].content == "bash result\n\n[HEARTBEAT t=5s turn=1] continue"
+
+
+def test_merge_into_last_user_raises_when_last_role_is_assistant() -> None:
+    chat = Chat(
+        initial_user_prompt=_INITIAL_PROMPT,
+        model=_MODEL,
+        max_context_tokens=_MAX_TOKENS,
+    )
+    chat.append_assistant("assistant reply")
+
+    with pytest.raises(LifecycleError) as exc:
+        chat.merge_into_last_user("more content")
+
+    assert exc.value.state == "assistant"
+    assert exc.value.event == "merge_into_last_user"

@@ -22,6 +22,7 @@ MAX_CONTEXT_TOKENS = 200
 EXPECTED_HEARTBEAT_MESSAGES = 3
 EXPECTED_CONFIRMATION_CALLS = 2
 MIN_LLM_CALLS_FOR_HEARTBEAT_CHECK = 2
+TURN_0_FRAME_COUNT = 6
 
 
 @pytest.fixture(autouse=True)
@@ -95,6 +96,49 @@ def test_heartbeat_injected_before_next_llm_request(
     second_call_messages = run.captured_messages[1]
     assert second_call_messages[-1]["role"] == "user"
     assert "[HEARTBEAT t=" in second_call_messages[-1]["content"]
+
+
+def test_heartbeat_merged_into_last_user_turn_when_chat_is_user_last(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: heartbeat ticks arriving during user-last state (~99%
+    of match wall-clock, between bash_result and next LLM call) used to be
+    silently dropped — 0 heartbeat_injected frames in a 300 s real match.
+    Fix: merge into the last user turn instead of dropping, preserving the
+    alternating-role invariant. S4 must be observable in BOTH chat states.
+    """
+    run = run_harness_thread(
+        tmp_path,
+        monkeypatch,
+        [
+            make_response(command="whoami"),
+            make_response(task_complete=True),
+            make_response(task_complete=True),
+        ],
+    )
+    turn0_frames = [recv(run.peer) for _ in range(TURN_0_FRAME_COUNT)]
+    send(run.peer, HeartbeatTick(elapsed_s=15.0, turn_hint=0))
+    heartbeat = recv(run.peer)
+    request = recv(run.peer)
+    send(run.peer, Shutdown(reason="stop"))
+    drain_until_exit(run)
+
+    assert turn0_frames[-1].kind == "turn_summary"
+    assert turn0_frames[-2].kind == "bash_result"
+    assert heartbeat.kind == "heartbeat_injected"
+    assert heartbeat.data.kind == "heartbeat_injected"
+    assert heartbeat.data.payload.startswith("[HEARTBEAT t=")
+    assert request.kind == "llm_request"
+
+    assert len(run.captured_messages) >= MIN_LLM_CALLS_FOR_HEARTBEAT_CHECK
+    second_call_messages = run.captured_messages[1]
+    last_user = second_call_messages[-1]
+    assert last_user["role"] == "user"
+    assert "[HEARTBEAT t=" in last_user["content"]
+    # "\n\n[HEARTBEAT" proves the tick was merged INTO an existing user turn
+    # (separator + heartbeat), not appended as a new user turn (which would
+    # have produced a user-user pair and violated alternation).
+    assert "\n\n[HEARTBEAT t=" in last_user["content"]
 
 
 def test_parser_json_happy_path_sets_parse_ok(

@@ -11,7 +11,7 @@ from typing import Literal
 
 from common import protocol as proto
 from common.clock import now_utc
-from common.errors import LifecycleError, TransportError
+from common.errors import TransportError
 from harness import _loop_helpers as helpers
 from harness import config, heartbeat, llm, parser, shell
 from harness.chat import Chat
@@ -133,12 +133,7 @@ def _process_pending(state: _State, chat: Chat, silence_threshold_s: float) -> i
 
 def _handle_inbound(env: proto.Envelope, chat: Chat, state: _State) -> int | None:
     if isinstance(env.data, proto.HeartbeatTick):
-        if chat.history and chat.history[-1].role == "user":
-            return None
-        try:
-            payload = heartbeat.inject(chat, env.data.elapsed_s, state.turn)
-        except LifecycleError:
-            return None
+        payload = heartbeat.inject(chat, env.data.elapsed_s, state.turn)
         state.emit(
             proto.HeartbeatInjected(turn=state.turn, elapsed_s=env.data.elapsed_s, payload=payload)
         )
