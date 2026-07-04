@@ -96,7 +96,12 @@ class TmuxShell:
         if is_blocking:
             token = f"arenabench-done-{uuid.uuid4().hex[:8]}"
             marker = f"{_RC_PREFIX}{token}__"
-            self._send_command(f'{keystrokes}; echo "{marker}$?"; tmux wait -S {token}')
+            # Strip trailing whitespace + ';' so the sentinel never lands on a
+            # new prompt (raw '\n') or forms ';;' — both are `bash: syntax error`.
+            cleaned = keystrokes.rstrip().rstrip(";").rstrip()
+            sentinel = f'echo "{marker}$?"; tmux wait -S {token}'
+            composed = f"{cleaned}; {sentinel}" if cleaned else sentinel
+            self._send_command(composed)
             try:
                 self._run_tmux(["wait", token], timeout_s=wait_timeout_s)
             except LifecycleError:

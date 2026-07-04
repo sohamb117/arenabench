@@ -15,6 +15,7 @@ _MAX_DURATION_S = 5.0
 _NON_BLOCKING_MAX_DURATION_S = 0.18
 _TRUNCATE_BYTES = 10 * 1024
 _LONG_OUTPUT_BYTES = 12 * 1024
+_SHORT_WAIT_TIMEOUT_S = 2.0
 
 
 def _session_name() -> str:
@@ -99,3 +100,44 @@ def test_context_manager_cleans_up_session() -> None:
         assert shell.is_alive()
 
     assert not shell.is_alive()
+
+
+def test_run_blocking_with_trailing_newline_captures_exit_status() -> None:
+    """Regression: LLM parsers often emit keystrokes with a trailing '\n'.
+
+    Before the fix, tmux submits the newline mid-string; the sentinel
+    (`; echo "..."; tmux wait -S ...`) then arrives at a fresh prompt
+    starting with a bare `;` → `bash: syntax error near unexpected token ';'`.
+    The marker never prints, `tmux wait` hangs to timeout, exit_status stays
+    None, and the whole turn burns wait_timeout_s wall-clock.
+    """
+    with TmuxShell(_session_name()) as shell:
+        result = shell.run(
+            "echo hello\n",
+            duration_sec=_BLOCKING_DURATION_SEC,
+            is_blocking=True,
+            wait_timeout_s=_SHORT_WAIT_TIMEOUT_S,
+        )
+
+    assert "hello" in result.terminal_output
+    assert "syntax error" not in result.terminal_output
+    assert result.exit_status == 0
+    assert result.duration_s < _SHORT_WAIT_TIMEOUT_S
+
+
+def test_run_blocking_with_trailing_semicolon_captures_exit_status() -> None:
+    """Regression: a trailing ';' in keystrokes would concatenate to ';;',
+    which bash rejects outside of a case terminator.
+    """
+    with TmuxShell(_session_name()) as shell:
+        result = shell.run(
+            "echo hi;",
+            duration_sec=_BLOCKING_DURATION_SEC,
+            is_blocking=True,
+            wait_timeout_s=_SHORT_WAIT_TIMEOUT_S,
+        )
+
+    assert "hi" in result.terminal_output
+    assert "syntax error" not in result.terminal_output
+    assert result.exit_status == 0
+    assert result.duration_s < _SHORT_WAIT_TIMEOUT_S
