@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import cast
 
 from common.errors import ConfigError
-from orchestrator.cloudinit import GuestProxyTarget
+from orchestrator.cloudinit import GuestProxyTarget, SecretFile
+from orchestrator.copilot_credentials import (
+    COPILOT_MODEL_PREFIX,
+    AgentCredentials,
+    resolve_copilot_secret_files,
+)
 from orchestrator.egress_proxy import EgressProxy, ProxyConfig
 from orchestrator.match_config import AgentEntry, MatchConfig
 
@@ -107,6 +112,10 @@ def ensure_ssh_keypair(overlay_dir: Path) -> tuple[Path, str]:
 def resolve_agent_env_vars(
     agents: list[AgentEntry],
 ) -> dict[int, tuple[tuple[str, str], ...]]:
+    return resolve_agent_credentials(agents).env_vars
+
+
+def resolve_agent_credentials(agents: list[AgentEntry]) -> AgentCredentials:
     """Resolve each agent's `api_key_env` to its current value on the host.
 
     Returns slot → ordered tuple of (var, value) pairs so SshConfig (frozen
@@ -117,7 +126,8 @@ def resolve_agent_env_vars(
     Agents with `mock_response` or `mock_raise_on_turn` set are skipped —
     they will not call the real LLM, so no api_key is needed.
     """
-    out: dict[int, tuple[tuple[str, str], ...]] = {}
+    env_vars: dict[int, tuple[tuple[str, str], ...]] = {}
+    secret_files: dict[int, tuple[SecretFile, ...]] = {}
     for agent in agents:
         agent_cfg_path = _REPO_ROOT / agent.config
         cfg_json = _parse_agent_config(agent_cfg_path)
@@ -125,7 +135,13 @@ def resolve_agent_env_vars(
             cfg_json.get("mock_response") is not None
             or cfg_json.get("mock_raise_on_turn") is not None
         ):
-            out[agent.slot] = ()
+            env_vars[agent.slot] = ()
+            secret_files[agent.slot] = ()
+            continue
+        model = cfg_json.get("model")
+        if isinstance(model, str) and model.startswith(COPILOT_MODEL_PREFIX):
+            env_vars[agent.slot] = ()
+            secret_files[agent.slot] = resolve_copilot_secret_files(agent_cfg_path)
             continue
         api_key_env = cfg_json.get("api_key_env")
         if not isinstance(api_key_env, str):
@@ -141,8 +157,9 @@ def resolve_agent_env_vars(
                 path=str(agent_cfg_path),
                 field=api_key_env,
             )
-        out[agent.slot] = ((api_key_env, value),)
-    return out
+        env_vars[agent.slot] = ((api_key_env, value),)
+        secret_files[agent.slot] = ()
+    return AgentCredentials(env_vars=env_vars, secret_files=secret_files)
 
 
 def wait_for_ssh_ready(

@@ -18,7 +18,7 @@ from orchestrator._cli_helpers import (
     detect_edk2_pflash,
     ensure_ssh_keypair,
     load_agent_blobs,
-    resolve_agent_env_vars,
+    resolve_agent_credentials,
     wait_for_ssh_ready,
 )
 from orchestrator.cloudinit import render_user_data, write_seed_iso
@@ -146,7 +146,7 @@ def _drive_match(
     overlay_dir = log_root / "matches" / config.match_id / "vm"
     overlay_dir.mkdir(parents=True, exist_ok=True)
     config_blobs, prompt_blobs = load_agent_blobs(config.agents)
-    agent_env_vars = resolve_agent_env_vars(config.agents)
+    agent_credentials = resolve_agent_credentials(config.agents)
     key_path, ssh_pubkey = ensure_ssh_keypair(overlay_dir)
     proxy = None
     vm = None
@@ -158,7 +158,8 @@ def _drive_match(
             config_blobs=config_blobs,
             prompt_blobs=prompt_blobs,
             ssh_pubkey=ssh_pubkey,
-            agent_env_vars=agent_env_vars,
+            agent_env_vars=agent_credentials.env_vars,
+            agent_secret_files=agent_credentials.secret_files,
             proxy_target=proxy_target,
         )
         seed_iso = overlay_dir / "seed.iso"

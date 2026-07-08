@@ -49,6 +49,9 @@ class EgressProxy:
             "generativelanguage.googleapis.com",
             "api.mistral.ai",
             "api.deepseek.com",
+            "api.github.com",
+            "api.githubcopilot.com",
+            "github.com",
         }
     )
 

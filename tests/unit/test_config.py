@@ -115,6 +115,17 @@ def test_lowercase_api_key_env_raises_config_error(tmp_path: pathlib.Path) -> No
         load_config(p)
 
 
+def test_missing_api_key_env_for_non_copilot_raises_config_error(tmp_path: pathlib.Path) -> None:
+    # Given
+    payload = dict(_valid_payload())
+    del payload["api_key_env"]
+    p = _write_config(tmp_path, payload)
+
+    # When / Then
+    with pytest.raises(ConfigError):
+        load_config(p)
+
+
 def test_max_tokens_zero_raises_config_error(tmp_path: pathlib.Path) -> None:
     # Given
     payload = dict(_valid_payload())

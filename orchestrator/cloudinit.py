@@ -20,6 +20,12 @@ _DEFAULT_META_DATA = "instance-id: arenabench/local-test\nlocal-hostname: arenab
 
 
 @dataclass(frozen=True, slots=True)
+class SecretFile:
+    path: str
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
 class RenderedAgent:
     slot: int
     user: str
@@ -27,6 +33,7 @@ class RenderedAgent:
     prompt_blob: str
     cgroup_limits: CgroupLimits | None
     env_vars: tuple[tuple[str, str], ...]
+    secret_files: tuple[SecretFile, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +47,7 @@ def _build_agents(
     config_blobs: dict[int, str],
     prompt_blobs: dict[int, str],
     agent_env_vars: dict[int, tuple[tuple[str, str], ...]],
+    agent_secret_files: dict[int, tuple[SecretFile, ...]],
     template_path: Path,
 ) -> list[RenderedAgent]:
     agents: list[RenderedAgent] = []
@@ -64,6 +72,7 @@ def _build_agents(
                 prompt_blob=prompt_blobs[entry.slot],
                 cgroup_limits=match_config.cgroup_limits,
                 env_vars=tuple((k, shlex.quote(v)) for k, v in agent_env_vars.get(entry.slot, ())),
+                secret_files=agent_secret_files.get(entry.slot, ()),
             )
         )
     return agents
@@ -76,11 +85,17 @@ def render_user_data(
     prompt_blobs: dict[int, str],
     ssh_pubkey: str,
     agent_env_vars: dict[int, tuple[tuple[str, str], ...]] | None = None,
+    agent_secret_files: dict[int, tuple[SecretFile, ...]] | None = None,
     proxy_target: GuestProxyTarget | None = None,
     template_path: Path = _DEFAULT_TEMPLATE_PATH,
 ) -> str:
     agents = _build_agents(
-        match_config, config_blobs, prompt_blobs, agent_env_vars or {}, template_path
+        match_config,
+        config_blobs,
+        prompt_blobs,
+        agent_env_vars or {},
+        agent_secret_files or {},
+        template_path,
     )
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(template_path.parent),

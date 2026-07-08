@@ -54,6 +54,14 @@ write_files:
 {% for k, v in agent.env_vars %}
       export {{ k }}={{ v }}
 {% endfor %}
+{% for secret in agent.secret_files %}
+  - path: /home/{{ agent.user }}/{{ secret.path }}
+    owner: '{{ agent.user }}:{{ agent.user }}'
+    permissions: '0600'
+    defer: true
+    content: |
+{{ secret.content | indent(6, first=True) }}
+{% endfor %}
 {% endfor %}
 {% if proxy_target and network_policy == "allowlist" %}
   - path: /etc/profile.d/arenabench-proxy.sh
@@ -68,6 +76,10 @@ write_files:
 runcmd:
 {% for agent in agents %}
   - chmod 0700 /home/{{ agent.user }}
+{% if agent.secret_files %}
+  - mkdir -p /home/{{ agent.user }}/.config/litellm/github_copilot
+  - chown -R {{ agent.user }}:{{ agent.user }} /home/{{ agent.user }}/.config
+{% endif %}
 {% endfor %}
   - chmod o+x /root
   - chmod -R o+rX /root/.local

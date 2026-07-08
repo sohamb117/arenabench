@@ -24,7 +24,7 @@ _CONNECT_TIMEOUT_S = 5.0
 _HTTP_200 = b"HTTP/1.1 200"
 _HTTP_403 = b"HTTP/1.1 403"
 _HTTP_400 = b"HTTP/1.1 400"
-_EXPECTED_PROVIDERS = 5
+_EXPECTED_PROVIDERS = 8
 
 
 class _Upstream:
@@ -98,10 +98,13 @@ def _patch_upstream(monkeypatch: pytest.MonkeyPatch, upstream: _Upstream) -> Non
     monkeypatch.setattr(EgressProxy, "connect_upstream", fake_open_upstream)
 
 
-def test_default_allowlist_has_five_providers() -> None:
+def test_default_allowlist_has_expected_providers() -> None:
     assert len(EgressProxy.DEFAULT_ALLOWLIST) == _EXPECTED_PROVIDERS
     assert "api.anthropic.com" in EgressProxy.DEFAULT_ALLOWLIST
     assert "api.openai.com" in EgressProxy.DEFAULT_ALLOWLIST
+    assert "api.githubcopilot.com" in EgressProxy.DEFAULT_ALLOWLIST
+    assert "api.github.com" in EgressProxy.DEFAULT_ALLOWLIST
+    assert "github.com" in EgressProxy.DEFAULT_ALLOWLIST
 
 
 def test_start_binds_dynamic_port_and_stop_is_clean(tmp_path: Path) -> None:

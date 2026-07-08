@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 import yaml
 
-from orchestrator.cloudinit import GuestProxyTarget, render_user_data, write_seed_iso
+from orchestrator.cloudinit import GuestProxyTarget, SecretFile, render_user_data, write_seed_iso
 from orchestrator.match_config import MatchConfig
 
 _HEARTBEAT = 120
@@ -172,6 +172,33 @@ def test_allowlist_mode_with_proxy_renders_env_and_accept_rule() -> None:
     assert "AIOHTTP_TRUST_ENV=True" in content
     runcmd = cast(list[str], doc["runcmd"])
     assert any("10.0.2.2" in c and "54321" in c and "ACCEPT" in c for c in runcmd)
+
+
+def test_copilot_secret_files_render_under_agent_home() -> None:
+    cfg = _match_config(n_agents=_AGENT_COUNT_2, network_policy="allowlist")
+    cb, pb = _blobs(_AGENT_COUNT_2)
+
+    out = render_user_data(
+        match_config=cfg,
+        config_blobs=cb,
+        prompt_blobs=pb,
+        ssh_pubkey=_TEST_SSH_PUBKEY,
+        agent_secret_files={
+            0: (SecretFile(".config/litellm/github_copilot/access-token", "ghu-test\n"),)
+        },
+    )
+
+    doc = cast(dict[str, object], cast(object, yaml.safe_load(out)))
+    write_files = cast(list[dict[str, object]], doc["write_files"])
+    by_path = {cast(str, w["path"]): w for w in write_files}
+    secret_path = "/home/agent0/.config/litellm/github_copilot/access-token"
+    secret = by_path[secret_path]
+    assert secret["owner"] == "agent0:agent0"
+    assert secret["permissions"] == "0600"
+    assert secret["content"] == "ghu-test\n"
+    runcmd = cast(list[str], doc["runcmd"])
+    assert "mkdir -p /home/agent0/.config/litellm/github_copilot" in runcmd
+    assert "chown -R agent0:agent0 /home/agent0/.config" in runcmd
 
 
 def test_full_mode_omits_proxy_env_even_with_target() -> None:

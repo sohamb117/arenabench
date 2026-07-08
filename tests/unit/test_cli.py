@@ -7,6 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from orchestrator import cli as cli_module
+from orchestrator._cli_helpers import AgentCredentials
 from orchestrator.cli import app
 from orchestrator.cloudinit import GuestProxyTarget
 from orchestrator.match_config import AgentEntry, MatchConfig
@@ -128,11 +129,11 @@ def test_run_stops_proxy_when_render_user_data_fails(
         _ = agents
         return {0: "{}", 1: "{}"}, {0: "p", 1: "p"}
 
-    def fake_resolve_agent_env_vars(
+    def fake_resolve_agent_credentials(
         agents: list[AgentEntry],
-    ) -> dict[int, tuple[tuple[str, str], ...]]:
+    ) -> AgentCredentials:
         _ = agents
-        return {}
+        return AgentCredentials(env_vars={}, secret_files={})
 
     def fake_ensure_ssh_keypair(overlay_dir: pathlib.Path) -> tuple[pathlib.Path, str]:
         _ = overlay_dir
@@ -145,7 +146,7 @@ def test_run_stops_proxy_when_render_user_data_fails(
         return FakeProxy(), GuestProxyTarget("10.0.2.2", 12345)
 
     monkeypatch.setattr(cli_module, "load_agent_blobs", fake_load_agent_blobs)
-    monkeypatch.setattr(cli_module, "resolve_agent_env_vars", fake_resolve_agent_env_vars)
+    monkeypatch.setattr(cli_module, "resolve_agent_credentials", fake_resolve_agent_credentials)
     monkeypatch.setattr(
         cli_module,
         "ensure_ssh_keypair",

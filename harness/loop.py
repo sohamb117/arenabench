@@ -94,7 +94,7 @@ def run_harness(
 
 def _setup(
     path: Path, base_dir: Path, initial_template: str, state: _State
-) -> tuple[config.AgentConfig, str, Chat]:
+) -> tuple[config.AgentConfig, str | None, Chat]:
     cfg = config.load_config(path)
     api_key = config.resolve_api_key(cfg)
     system = config.read_system_prompt(cfg, base_dir)
@@ -162,7 +162,7 @@ def _last_user_excerpt(messages: list[dict[str, str]]) -> str:
 
 
 def _llm_turn(
-    state: _State, chat: Chat, tmux: shell.TmuxShell, cfg: config.AgentConfig, api_key: str
+    state: _State, chat: Chat, tmux: shell.TmuxShell, cfg: config.AgentConfig, api_key: str | None
 ) -> parser.ParsedResponse | None:
     if cfg.mock_raise_on_turn is not None and state.turn >= cfg.mock_raise_on_turn:
         raise RuntimeError(

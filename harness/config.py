@@ -25,10 +25,21 @@ class AgentConfig(pydantic.BaseModel):
     fallbacks: list[str] | None = None
     reasoning_effort: _ReasoningEffort | None = None
     parser: Literal["json", "xml"] = "json"
-    api_key_env: Annotated[str, pydantic.Field(pattern=_ENV_KEY_PATTERN)]
+    api_key_env: Annotated[str, pydantic.Field(pattern=_ENV_KEY_PATTERN)] | None = None
     system_prompt_path: str
     mock_response: str | None = None
     mock_raise_on_turn: int | None = None
+
+    @pydantic.model_validator(mode="after")
+    def _validate_auth_mode(self) -> "AgentConfig":
+        if (
+            self.api_key_env is None
+            and self.mock_response is None
+            and self.mock_raise_on_turn is None
+            and not uses_github_copilot_auth(self.model)
+        ):
+            raise ValueError("api_key_env required unless using mock or GitHub Copilot auth")
+        return self
 
 
 def load_config(path: pathlib.Path) -> AgentConfig:
@@ -51,7 +62,11 @@ def load_config(path: pathlib.Path) -> AgentConfig:
         raise ConfigError(str(exc), path=str(path), field=field) from exc
 
 
-def resolve_api_key(cfg: AgentConfig) -> str:
+def uses_github_copilot_auth(model: str) -> bool:
+    return model.startswith("github_copilot/")
+
+
+def resolve_api_key(cfg: AgentConfig) -> str | None:
     """Return the value of the env var named by ``cfg.api_key_env``.
 
     Returns the literal string "mock" without consulting env when
@@ -63,6 +78,14 @@ def resolve_api_key(cfg: AgentConfig) -> str:
     """
     if cfg.mock_response is not None or cfg.mock_raise_on_turn is not None:
         return "mock"
+    if uses_github_copilot_auth(cfg.model):
+        return None
+    if cfg.api_key_env is None:
+        raise ConfigError(
+            "api_key_env missing from agent config",
+            path="<config>",
+            field="api_key_env",
+        )
     value = os.environ.get(cfg.api_key_env)
     if value is None:
         raise ConfigError(
