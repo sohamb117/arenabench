@@ -1,4 +1,4 @@
-"""Unit tests for orchestrator._cli_helpers.wait_for_ssh_ready — split out of
+"""Unit tests for orchestrator.ssh_readiness.wait_for_ssh_ready — split out of
 test_cli_helpers.py for the 250 LOC cap. Locks the Oracle-round-12 gap fix:
 proving SSH readiness requires real key-auth + cloud-init + per-agent file
 checks, not just a TCP-connect probe.
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from orchestrator._cli_helpers import wait_for_ssh_ready
 from orchestrator.match_config import AgentEntry
+from orchestrator.ssh_readiness import wait_for_ssh_ready
 
 EXPECTED_RETRY_CALLS = 2
 
@@ -41,7 +41,7 @@ def test_wait_for_ssh_ready_returns_when_probe_succeeds(
         captured_argv.extend(argv)
         return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr("orchestrator._cli_helpers.subprocess.run", fake_run)
+    monkeypatch.setattr("orchestrator.ssh_readiness.subprocess.run", fake_run)
 
     wait_for_ssh_ready(
         host="127.0.0.1",
@@ -78,8 +78,8 @@ def test_wait_for_ssh_ready_retries_then_succeeds(
         rc = 0 if calls["n"] >= EXPECTED_RETRY_CALLS else 255
         return subprocess.CompletedProcess(args=argv, returncode=rc, stdout="", stderr="boom")
 
-    monkeypatch.setattr("orchestrator._cli_helpers.subprocess.run", fake_run)
-    monkeypatch.setattr("orchestrator._cli_helpers.time.sleep", _noop_sleep)
+    monkeypatch.setattr("orchestrator.ssh_readiness.subprocess.run", fake_run)
+    monkeypatch.setattr("orchestrator.ssh_readiness.time.sleep", _noop_sleep)
 
     wait_for_ssh_ready(
         host="127.0.0.1",
@@ -106,8 +106,8 @@ def test_wait_for_ssh_ready_raises_timeout_when_probe_keeps_failing(
             args=argv, returncode=255, stdout="", stderr="Permission denied (publickey)"
         )
 
-    monkeypatch.setattr("orchestrator._cli_helpers.subprocess.run", fake_run)
-    monkeypatch.setattr("orchestrator._cli_helpers.time.sleep", _noop_sleep)
+    monkeypatch.setattr("orchestrator.ssh_readiness.subprocess.run", fake_run)
+    monkeypatch.setattr("orchestrator.ssh_readiness.time.sleep", _noop_sleep)
 
     with pytest.raises(TimeoutError, match="Permission denied"):
         wait_for_ssh_ready(
@@ -140,8 +140,8 @@ def test_wait_for_ssh_ready_treats_subprocess_timeout_as_retryable(
             raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
         return subprocess.CompletedProcess(args=argv, returncode=0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("orchestrator._cli_helpers.subprocess.run", fake_run)
-    monkeypatch.setattr("orchestrator._cli_helpers.time.sleep", _noop_sleep)
+    monkeypatch.setattr("orchestrator.ssh_readiness.subprocess.run", fake_run)
+    monkeypatch.setattr("orchestrator.ssh_readiness.time.sleep", _noop_sleep)
 
     wait_for_ssh_ready(
         host="127.0.0.1",

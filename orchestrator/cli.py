@@ -19,13 +19,13 @@ from orchestrator._cli_helpers import (
     ensure_ssh_keypair,
     load_agent_blobs,
     resolve_agent_credentials,
-    wait_for_ssh_ready,
 )
 from orchestrator.cloudinit import render_user_data, write_seed_iso
 from orchestrator.lifecycle import MatchContext, MatchOutcome, run_match
 from orchestrator.liveness import LivenessThresholds
 from orchestrator.logger import MatchLogger
 from orchestrator.match_config import MatchConfig, load_match_config
+from orchestrator.ssh_readiness import wait_for_ssh_ready
 from orchestrator.ssh_server import PROBE_PORT, SshOrchestratorServer
 from orchestrator.vm import QemuConfig, QemuVm, detect_accel
 
