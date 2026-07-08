@@ -1,0 +1,88 @@
+import json
+import pathlib
+from typing import cast
+
+import pytest
+from typer.testing import CliRunner
+
+from orchestrator.cli import app
+from orchestrator.match_config import MatchConfig
+
+_N2 = 2
+
+
+@pytest.fixture
+def runner() -> CliRunner:
+    return CliRunner()
+
+
+def _write_agent(base: pathlib.Path, name: str) -> pathlib.Path:
+    p = base / name
+    p.write_text(
+        json.dumps(
+            {
+                "model": "openai/gpt-x",
+                "temperature": 0.0,
+                "max_tokens": 1000,
+                "request_timeout_s": 60,
+                "num_retries": 1,
+                "parser": "json",
+                "api_key_env": "OPENAI_API_KEY",
+                "system_prompt_path": "p.txt",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return p
+
+
+def test_new_match_emits_valid_json_to_stdout(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    a0 = _write_agent(tmp_path, "a0.json")
+    a1 = _write_agent(tmp_path, "a1.json")
+
+    result = runner.invoke(app, ["new-match", "-a", str(a0), "-a", str(a1), "--match-id", "qa"])
+
+    assert result.exit_code == 0
+    payload = cast(dict[str, object], json.loads(result.stdout))
+    cfg = MatchConfig.model_validate(payload)
+    assert cfg.n_agents == _N2
+    assert cfg.match_id == "qa"
+
+
+def test_new_match_writes_out_file(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    a0 = _write_agent(tmp_path, "a0.json")
+    a1 = _write_agent(tmp_path, "a1.json")
+    out = tmp_path / "sub" / "match.json"
+
+    result = runner.invoke(
+        app, ["new-match", "-a", str(a0), "-a", str(a1), "--match-id", "qa", "-o", str(out)]
+    )
+
+    assert result.exit_code == 0
+    assert out.is_file()
+    cfg = MatchConfig.model_validate_json(out.read_text(encoding="utf-8"))
+    assert cfg.n_agents == _N2
+
+
+def test_new_match_rejects_bad_match_id(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    a0 = _write_agent(tmp_path, "a0.json")
+    a1 = _write_agent(tmp_path, "a1.json")
+
+    result = runner.invoke(
+        app, ["new-match", "-a", str(a0), "-a", str(a1), "--match-id", "bad id"]
+    )
+
+    assert result.exit_code == 1
+    assert "match_id" in (result.output + (result.stderr or ""))
+
+
+def test_new_match_reports_missing_agent(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    a0 = _write_agent(tmp_path, "a0.json")
+    missing = tmp_path / "missing.json"
+
+    result = runner.invoke(
+        app, ["new-match", "-a", str(a0), "-a", str(missing), "--match-id", "qa"]
+    )
+
+    assert result.exit_code == 1
+    assert "missing.json" in (result.output + (result.stderr or ""))

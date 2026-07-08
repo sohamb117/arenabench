@@ -5,13 +5,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
 import typer
 
 from common.errors import ConfigError
-from orchestrator.match_config import load_match_config
+from orchestrator.match_config import MatchConfig, load_match_config
 from orchestrator.match_driver import drive_match
+from orchestrator.match_generator import build_match_config_dict
 from orchestrator.match_validation import check_referenced_files_exist
 
 app = typer.Typer(
@@ -114,6 +115,59 @@ def build_vm(arch: str = "aarch64") -> None:
     env = {**os.environ, "ARENABENCH_ARCH": arch}
     result = subprocess.run([str(script)], env=env, check=False)
     raise typer.Exit(code=result.returncode)
+
+
+@app.command(name="new-match")
+def new_match(
+    agent: Annotated[
+        list[Path], typer.Option("--agent", "-a", help="Agent config path (repeat 2-16x)")
+    ],
+    match_id: Annotated[str, typer.Option("--match-id", help="Match slug (letters/digits/-/_)")],
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Write JSON here; default is stdout")
+    ] = None,
+    heartbeat: Annotated[int, typer.Option("--heartbeat", help="Heartbeat cadence (s)")] = 120,
+    grace: Annotated[int, typer.Option("--grace", help="Winner grace period (s)")] = 30,
+    max_duration: Annotated[
+        int, typer.Option("--max-duration", help="Max match duration (s)")
+    ] = 1800,
+    archive_grace: Annotated[int, typer.Option("--archive-grace", help="Archive grace (s)")] = 60,
+    network_policy: Annotated[
+        str, typer.Option("--network-policy", help="allowlist | full")
+    ] = "allowlist",
+    allowlist_extra: Annotated[
+        list[str] | None, typer.Option("--allowlist-extra", help="Extra allowlisted domain")
+    ] = None,
+) -> None:
+    """Generate a match.json from agent configs, auto-assigning slots + users.
+
+    Slots 0..N-1 and users agent0..agentN-1 are derived from --agent order, so a
+    large free-for-all is one command. Emits to --out (or stdout) after
+    validating against the match schema.
+    """
+    try:
+        extra = tuple(allowlist_extra) if allowlist_extra else None
+        payload = build_match_config_dict(
+            agent_paths=agent,
+            match_id=match_id,
+            heartbeat_interval_s=heartbeat,
+            grace_period_s=grace,
+            max_duration_s=max_duration,
+            archive_grace_s=archive_grace,
+            network_policy=network_policy,
+            domain_allowlist_extra=extra,
+        )
+        config = MatchConfig.model_validate(payload)
+    except (ConfigError, ValueError) as exc:
+        typer.echo(f"ERROR {exc}", err=True)
+        raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
+    rendered = json.dumps(payload, indent=2, sort_keys=True)
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(rendered + "\n", encoding="utf-8")
+        typer.echo(f"OK wrote {out} match_id={config.match_id} n_agents={config.n_agents}")
+    else:
+        typer.echo(rendered)
 
 
 def main(argv: list[str] | None = None) -> int:
