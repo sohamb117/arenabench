@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: lint + typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # tmux is required by the harness shell tests (they skip when absent).
+      # e2e tests (QEMU + LLM keys) stay excluded via the `-m "not e2e"` marker.
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Install uv + Python 3.12
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      # Mirrors scripts/lint.sh exactly.
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: basedpyright (strict)
+        run: uv run basedpyright
+
+      # Mirrors scripts/test.sh exactly (e2e suite is gated separately).
+      - name: pytest (unit + integration)
+        run: uv run pytest -m "not e2e" -q
