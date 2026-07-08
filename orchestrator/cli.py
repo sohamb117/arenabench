@@ -38,8 +38,7 @@ def validate(match_path: Path) -> None:
         config = load_match_config(match_path)
         check_referenced_files_exist(config, _REPO_ROOT)
     except ConfigError as exc:
-        field = f"field={exc.field}" if exc.field else "field=<root>"
-        typer.echo(f"ERROR {exc} path={match_path} {field}", err=True)
+        typer.echo(f"ERROR {exc}", err=True)
         raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
     typer.echo(
         f"OK match_id={config.match_id} n_agents={config.n_agents} "
@@ -104,8 +103,7 @@ def run_match_command(
             ephemeral=ephemeral,
         )
     except ConfigError as exc:
-        field = f"field={exc.field}" if exc.field else "field=<root>"
-        typer.echo(f"ERROR {exc} {field}", err=True)
+        typer.echo(f"ERROR {exc}", err=True)
         raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
     typer.echo(f"DONE result={outcome.result} winner={outcome.winner} cause={outcome.cause}")
 
