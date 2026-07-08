@@ -8,7 +8,7 @@
   "network_policy": "allowlist",
   "cgroup_limits": null,
   "agents": [
-    { "slot": 0, "user": "agent0", "config": "configs/agents/fake-suicide.json" },
-    { "slot": 1, "user": "agent1", "config": "configs/agents/fake-wait.json" }
+    { "slot": 0, "user": "agent0", "config": "tests/fixtures/configs/agents/fake-suicide.json" },
+    { "slot": 1, "user": "agent1", "config": "tests/fixtures/configs/agents/fake-wait.json" }
   ]
 }

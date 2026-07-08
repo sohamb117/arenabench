@@ -1,10 +1,10 @@
 """End-to-end §14 scenario tests — gated behind ARENABENCH_E2E=1.
 
 Per plan §9, each scenario has a BINARY OBSERVABLE. These tests use FAKE
-LLM agents (configs/agents/fake-*.json with mock_response / mock_raise_on_turn
-set) so outcomes are deterministic across runs, mirroring the plan §9
-"fake LLM" intent for S15 and S17. Real-LLM e2e for S1 (demo-1v1 victory)
-+ S5 (log completeness) + S6 (N=4) lives in test_match_real_vm.py.
+LLM agents (tests/fixtures/configs/agents/fake-*.json with mock_response /
+mock_raise_on_turn set) so outcomes are deterministic across runs, mirroring
+the plan §9 "fake LLM" intent for S15 and S17. Real-LLM e2e for S1 (demo-1v1
+victory) + S5 (log completeness) + S6 (N=4) lives in test_match_real_vm.py.
 
 Each test invokes the production CLI (`uv run arenabench run`) and asserts
 the observable from the resulting summary.json / per-agent logs.
@@ -25,10 +25,11 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GOLDEN_IMAGE_PATH = REPO_ROOT / "vm" / "images" / "arenabench-golden-aarch64.qcow2"
 DEMO_MATCH_1V1 = REPO_ROOT / "configs" / "matches" / "demo-1v1.json"
-S3_MUTUAL_MATCH = REPO_ROOT / "configs" / "matches" / "s3-mutual.json"
-S11_SELF_KILL_MATCH = REPO_ROOT / "configs" / "matches" / "s11-self-kill.json"
-S15_WALKOVER_MATCH = REPO_ROOT / "configs" / "matches" / "s15-walkover.json"
-S17_TIMEOUT_MATCH = REPO_ROOT / "configs" / "matches" / "s17-timeout.json"
+FIXTURE_MATCHES = REPO_ROOT / "tests" / "fixtures" / "configs" / "matches"
+S3_MUTUAL_MATCH = FIXTURE_MATCHES / "s3-mutual.json"
+S11_SELF_KILL_MATCH = FIXTURE_MATCHES / "s11-self-kill.json"
+S15_WALKOVER_MATCH = FIXTURE_MATCHES / "s15-walkover.json"
+S17_TIMEOUT_MATCH = FIXTURE_MATCHES / "s17-timeout.json"
 S17_DURATION_MIN = 10.0
 S17_DURATION_MAX = 12.0
 S11_DEATH_WINDOW_S = 15.0

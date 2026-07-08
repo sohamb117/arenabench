@@ -30,8 +30,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GOLDEN_IMAGE_PATH = REPO_ROOT / "vm" / "images" / "arenabench-golden-aarch64.qcow2"
 DEMO_MATCH_1V1 = REPO_ROOT / "configs" / "matches" / "demo-1v1.json"
-S8_MATCH_A = REPO_ROOT / "configs" / "matches" / "s8-match-a.json"
-S8_MATCH_B = REPO_ROOT / "configs" / "matches" / "s8-match-b.json"
+FIXTURE_MATCHES = REPO_ROOT / "tests" / "fixtures" / "configs" / "matches"
+S8_MATCH_A = FIXTURE_MATCHES / "s8-match-a.json"
+S8_MATCH_B = FIXTURE_MATCHES / "s8-match-b.json"
 SSH_HOST_PORT = 22222
 SSH_READY_TIMEOUT_S = 300.0
 

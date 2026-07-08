@@ -7,7 +7,7 @@
   "fallbacks": null,
   "parser": "json",
   "api_key_env": "ARENABENCH_NO_KEY_NEEDED",
-  "system_prompt_path": "configs/prompts/passive.txt",
+  "system_prompt_path": "tests/fixtures/configs/prompts/passive.txt",
   "mock_response": "{\"analysis\":\"crashing soon for S15 testing\",\"plan\":\"crash at turn 3\",\"commands\":[],\"task_complete\":false}",
   "mock_raise_on_turn": 3
 }
