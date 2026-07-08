@@ -12,6 +12,7 @@ import typer
 from common.errors import ConfigError
 from orchestrator.match_config import load_match_config
 from orchestrator.match_driver import drive_match
+from orchestrator.match_validation import check_referenced_files_exist
 
 app = typer.Typer(
     name="arenabench",
@@ -34,6 +35,7 @@ def validate(match_path: Path) -> None:
     """Validate a match.json. Exits 0 if valid; nonzero with field violations otherwise."""
     try:
         config = load_match_config(match_path)
+        check_referenced_files_exist(config, _REPO_ROOT)
     except ConfigError as exc:
         field = f"field={exc.field}" if exc.field else "field=<root>"
         typer.echo(f"ERROR {exc} path={match_path} {field}", err=True)

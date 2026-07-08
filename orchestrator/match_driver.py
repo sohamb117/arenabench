@@ -18,10 +18,12 @@ from orchestrator.lifecycle import MatchContext, MatchOutcome, run_match
 from orchestrator.liveness import LivenessThresholds
 from orchestrator.logger import MatchLogger
 from orchestrator.match_config import MatchConfig
+from orchestrator.match_validation import check_referenced_files_exist
 from orchestrator.ssh_readiness import wait_for_ssh_ready
 from orchestrator.ssh_server import PROBE_PORT, SshOrchestratorServer
 from orchestrator.vm import QemuConfig, QemuVm, detect_accel
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 _SSH_READY_TIMEOUT_S = 120.0
 _SSH_HOST_PORT = 22222
 
@@ -43,6 +45,7 @@ def drive_match(
     orchestrator.lifecycle.run_match. The finally block always stops the
     server, terminates + cleans the VM, and stops the proxy.
     """
+    check_referenced_files_exist(config, _REPO_ROOT)
     log_root.mkdir(parents=True, exist_ok=True)
     match_id = make_match_id(config.match_id)
     logger = MatchLogger(log_root, match_id, config.n_agents)

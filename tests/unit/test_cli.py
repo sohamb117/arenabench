@@ -18,6 +18,8 @@ _MAX_DURATION = 1800
 _ARCHIVE_GRACE = 60
 _EXIT_CONFIG_ERROR = 1
 _EXIT_RUNTIME_ERROR = 3
+# Real shipped configs so the referenced-file existence check resolves them.
+_REAL_AGENT_CONFIGS = ("configs/agents/claude.json", "configs/agents/gpt.json")
 
 
 def _valid_match_payload(n_agents: int = 2) -> dict[str, object]:
@@ -31,7 +33,8 @@ def _valid_match_payload(n_agents: int = 2) -> dict[str, object]:
         "network_policy": "allowlist",
         "cgroup_limits": None,
         "agents": [
-            {"slot": i, "user": f"agent{i}", "config": f"c{i}.json"} for i in range(n_agents)
+            {"slot": i, "user": f"agent{i}", "config": _REAL_AGENT_CONFIGS[i % 2]}
+            for i in range(n_agents)
         ],
     }
 
