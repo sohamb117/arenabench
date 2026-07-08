@@ -5,8 +5,10 @@ from common.protocol import (
     BootAckResponse,
     Envelope,
     Frame,
+    HarnessExit,
     Kill0,
     Kill0Response,
+    LlmResponse,
     MatchStateChange,
     PidAnnounce,
 )
@@ -105,6 +107,32 @@ def make_sleep_patch(clock: SimClock):
 
 def make_env(kind: str, data: Frame) -> Envelope:
     return Envelope(ts=datetime.now(UTC), seq=0, src="x", dst="y", kind=kind, data=data)
+
+
+def llm_response_env(turn: int = 1) -> Envelope:
+    return make_env(
+        "llm_response",
+        LlmResponse(
+            turn=turn,
+            request_id="r",
+            content="hi",
+            parser="json",
+            parse_ok=True,
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+            latency_s=1.0,
+            error=None,
+        ),
+    )
+
+
+def crash_env() -> Envelope:
+    return make_env("harness_exit", HarnessExit(reason="crash", code=1, last_turn=1))
+
+
+def clean_env() -> Envelope:
+    return make_env("harness_exit", HarnessExit(reason="clean", code=0, last_turn=1))
 
 
 def schedule_boot_and_provision(vsock: FakeVsockServer) -> None:

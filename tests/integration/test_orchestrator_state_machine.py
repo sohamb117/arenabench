@@ -3,14 +3,7 @@ from typing import cast
 
 import pytest
 
-from common.protocol import (
-    BootAckResponse,
-    Envelope,
-    HarnessExit,
-    LlmResponse,
-    MatchStateChange,
-    PidAnnounce,
-)
+from common.protocol import BootAckResponse, MatchStateChange, PidAnnounce
 from orchestrator.lifecycle import MatchContext, run_match
 from orchestrator.liveness import LivenessThresholds
 from orchestrator.logger import MatchLogger
@@ -20,6 +13,9 @@ from tests.integration._state_machine_fakes import (
     FakeLogger,
     FakeVsockServer,
     SimClock,
+    clean_env,
+    crash_env,
+    llm_response_env,
     make_env,
     make_sleep_patch,
     schedule_boot_and_provision,
@@ -35,32 +31,6 @@ LLM_SCHEDULE_TIME_S = 1.0
 DEATH_TIME_S = 30.0
 SURVIVOR_DEATH_TIME_S = 45.0
 N_AGENTS_4 = 4
-
-
-def _llm_response_env(turn: int = 1) -> "Envelope":
-    return make_env(
-        "llm_response",
-        LlmResponse(
-            turn=turn,
-            request_id="r",
-            content="hi",
-            parser="json",
-            parse_ok=True,
-            prompt_tokens=1,
-            completion_tokens=1,
-            total_tokens=2,
-            latency_s=1.0,
-            error=None,
-        ),
-    )
-
-
-def _crash_env() -> "Envelope":
-    return make_env("harness_exit", HarnessExit(reason="crash", code=1, last_turn=1))
-
-
-def _clean_env() -> "Envelope":
-    return make_env("harness_exit", HarnessExit(reason="clean", code=0, last_turn=1))
 
 
 @pytest.fixture
@@ -108,8 +78,8 @@ def _logger(ctx: MatchContext) -> FakeLogger:
 def test_s1_happy_victory(base_ctx: MatchContext) -> None:
     vsock = _vsock(base_ctx)
     schedule_boot_and_provision(vsock)
-    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, _llm_response_env())
-    vsock.schedule(DEATH_TIME_S, SHELL_PORT_1, _clean_env())
+    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, llm_response_env())
+    vsock.schedule(DEATH_TIME_S, SHELL_PORT_1, clean_env())
 
     outcome = run_match(base_ctx)
 
@@ -130,9 +100,9 @@ def test_s1_happy_victory(base_ctx: MatchContext) -> None:
 def test_s3_mutual_destruction(base_ctx: MatchContext) -> None:
     vsock = _vsock(base_ctx)
     schedule_boot_and_provision(vsock)
-    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, _llm_response_env())
-    vsock.schedule(DEATH_TIME_S, SHELL_PORT_0, _crash_env())
-    vsock.schedule(DEATH_TIME_S, SHELL_PORT_1, _crash_env())
+    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, llm_response_env())
+    vsock.schedule(DEATH_TIME_S, SHELL_PORT_0, crash_env())
+    vsock.schedule(DEATH_TIME_S, SHELL_PORT_1, crash_env())
 
     outcome = run_match(base_ctx)
 
@@ -143,9 +113,9 @@ def test_s3_mutual_destruction(base_ctx: MatchContext) -> None:
 def test_s3_survivor_dies_in_grace(base_ctx: MatchContext) -> None:
     vsock = _vsock(base_ctx)
     schedule_boot_and_provision(vsock)
-    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, _llm_response_env())
-    vsock.schedule(DEATH_TIME_S, SHELL_PORT_1, _crash_env())
-    vsock.schedule(SURVIVOR_DEATH_TIME_S, SHELL_PORT_0, _crash_env())
+    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, llm_response_env())
+    vsock.schedule(DEATH_TIME_S, SHELL_PORT_1, crash_env())
+    vsock.schedule(SURVIVOR_DEATH_TIME_S, SHELL_PORT_0, crash_env())
 
     outcome = run_match(base_ctx)
 
@@ -190,9 +160,9 @@ def test_slow_agent_not_falsely_killed_pre_llm(monkeypatch: pytest.MonkeyPatch) 
         poll_interval_s=1.0,
     )
     schedule_boot_and_provision(vsock)
-    vsock.schedule(5.0, SHELL_PORT_1, _llm_response_env())
-    vsock.schedule(6.0, SHELL_PORT_0, _llm_response_env())
-    vsock.schedule(12.0, SHELL_PORT_1, _crash_env())
+    vsock.schedule(5.0, SHELL_PORT_1, llm_response_env())
+    vsock.schedule(6.0, SHELL_PORT_0, llm_response_env())
+    vsock.schedule(12.0, SHELL_PORT_1, crash_env())
 
     run_match(ctx)
 
@@ -208,7 +178,7 @@ def test_slow_agent_not_falsely_killed_pre_llm(monkeypatch: pytest.MonkeyPatch) 
 def test_s15_walkover(base_ctx: MatchContext) -> None:
     vsock = _vsock(base_ctx)
     schedule_boot_and_provision(vsock)
-    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, _crash_env())
+    vsock.schedule(LLM_SCHEDULE_TIME_S, SHELL_PORT_0, crash_env())
 
     outcome = run_match(base_ctx)
 
