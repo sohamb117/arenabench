@@ -203,5 +203,5 @@ def test_build_vm_shells_out_to_build_script(
 def test_help_text_lists_all_subcommands(runner: CliRunner) -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for cmd in ["validate", "replay", "run", "build-vm"]:
+    for cmd in ["validate", "replay", "run", "build-vm", "new-match"]:
         assert cmd in result.stdout

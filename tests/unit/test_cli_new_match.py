@@ -16,7 +16,11 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-def _write_agent(base: pathlib.Path, name: str) -> pathlib.Path:
+def _write_agent(
+    base: pathlib.Path,
+    name: str,
+    system_prompt_path: str = "configs/prompts/adversarial.txt",
+) -> pathlib.Path:
     p = base / name
     p.write_text(
         json.dumps(
@@ -28,7 +32,7 @@ def _write_agent(base: pathlib.Path, name: str) -> pathlib.Path:
                 "num_retries": 1,
                 "parser": "json",
                 "api_key_env": "OPENAI_API_KEY",
-                "system_prompt_path": "p.txt",
+                "system_prompt_path": system_prompt_path,
             }
         ),
         encoding="utf-8",
@@ -84,3 +88,13 @@ def test_new_match_reports_missing_agent(runner: CliRunner, tmp_path: pathlib.Pa
 
     assert result.exit_code == 1
     assert "missing.json" in (result.output + (result.stderr or ""))
+
+
+def test_new_match_rejects_missing_system_prompt(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    a0 = _write_agent(tmp_path, "a0.json", system_prompt_path="configs/prompts/does-not-exist.txt")
+    a1 = _write_agent(tmp_path, "a1.json")
+
+    result = runner.invoke(app, ["new-match", "-a", str(a0), "-a", str(a1), "--match-id", "qa"])
+
+    assert result.exit_code == 1
+    assert "system_prompt_path" in (result.output + (result.stderr or ""))

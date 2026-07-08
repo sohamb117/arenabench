@@ -4,6 +4,7 @@ from pathlib import Path
 
 from harness.config import load_config
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 _MIN_AGENTS = 2
 _MAX_AGENTS = 16
 
@@ -11,6 +12,18 @@ _DEFAULT_HEARTBEAT_S = 120
 _DEFAULT_GRACE_S = 30
 _DEFAULT_MAX_DURATION_S = 1800
 _DEFAULT_ARCHIVE_GRACE_S = 60
+
+
+def _relative_to_repo(path: Path) -> str:
+    """Store agent paths repo-root-relative when possible so the emitted match
+    is portable (matches resolve agent.config against the repo root at run time).
+    Paths outside the repo are kept as their resolved absolute form.
+    """
+    resolved = path.resolve()
+    try:
+        return str(resolved.relative_to(_REPO_ROOT))
+    except ValueError:
+        return str(resolved)
 
 
 def build_match_config_dict(
@@ -38,7 +51,7 @@ def build_match_config_dict(
     agents: list[dict[str, object]] = []
     for slot, path in enumerate(agent_paths):
         _ = load_config(path)
-        agents.append({"slot": slot, "user": f"agent{slot}", "config": str(path)})
+        agents.append({"slot": slot, "user": f"agent{slot}", "config": _relative_to_repo(path)})
     payload: dict[str, object] = {
         "match_id": match_id,
         "n_agents": n,

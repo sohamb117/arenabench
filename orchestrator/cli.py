@@ -73,9 +73,9 @@ def run_match_command(
     default and --arch is x86_64, the default is rewritten to the amd64
     golden so users do not need to pass --golden-image alongside --arch.
 
-    --ephemeral (plan §3.B3): pass `snapshot=on` to QEMU's disk0 drive and
-    skip the per-match qcow2 overlay creation/cleanup. Intended for CI /
-    one-shot smoke runs where the per-match overlay would be wasted IO.
+    --ephemeral passes `snapshot=on` to QEMU's disk0 drive and skips the
+    per-match qcow2 overlay creation/cleanup. Intended for CI / one-shot smoke
+    runs where the per-match overlay would be wasted IO.
     """
     if arch not in _ARCH_TO_IMAGE_SUFFIX:
         typer.echo(f"ERROR --arch must be 'aarch64' or 'x86_64', got {arch!r}", err=True)
@@ -95,13 +95,18 @@ def run_match_command(
         )
         raise typer.Exit(code=_EXIT_RUNTIME_ERROR)
     qemu_arch = cast("Literal['aarch64', 'x86_64']", arch)
-    outcome = drive_match(
-        config,
-        golden_image=golden_image,
-        log_root=log_root,
-        arch=qemu_arch,
-        ephemeral=ephemeral,
-    )
+    try:
+        outcome = drive_match(
+            config,
+            golden_image=golden_image,
+            log_root=log_root,
+            arch=qemu_arch,
+            ephemeral=ephemeral,
+        )
+    except ConfigError as exc:
+        field = f"field={exc.field}" if exc.field else "field=<root>"
+        typer.echo(f"ERROR {exc} {field}", err=True)
+        raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
     typer.echo(f"DONE result={outcome.result} winner={outcome.winner} cause={outcome.cause}")
 
 
@@ -158,6 +163,7 @@ def new_match(
             domain_allowlist_extra=extra,
         )
         config = MatchConfig.model_validate(payload)
+        check_referenced_files_exist(config, _REPO_ROOT)
     except (ConfigError, ValueError) as exc:
         typer.echo(f"ERROR {exc}", err=True)
         raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc

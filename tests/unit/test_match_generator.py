@@ -98,3 +98,17 @@ def test_defaults_match_documented_values(tmp_path: Path) -> None:
     assert payload["archive_grace_s"] == _DEFAULT_ARCHIVE
     assert payload["network_policy"] == "allowlist"
     assert payload["cgroup_limits"] is None
+
+
+def test_paths_under_repo_stored_repo_root_relative() -> None:
+    root = Path(__file__).resolve().parent.parent.parent
+
+    payload = build_match_config_dict(
+        agent_paths=[root / "configs/agents/claude.json", root / "configs/agents/gpt.json"],
+        match_id="rel",
+    )
+
+    assert [a["config"] for a in _agents(payload)] == [
+        "configs/agents/claude.json",
+        "configs/agents/gpt.json",
+    ]
