@@ -36,8 +36,8 @@ fi
 # default ~/.local/share/uv/python/ which lives under /root/ (mode 0700).
 # The venv at /opt/arenabench-venv/bin/python3 symlinks into the install
 # dir; if that target is unreachable for non-root agents, the harness
-# spawn over SSH fails with 'cannot execute: Permission denied' per
-# plan §3.B11 unprivileged-agent contract.
+# spawn over SSH fails with 'cannot execute: Permission denied' for the
+# unprivileged agent users.
 export UV_PYTHON_INSTALL_DIR=/opt/uv-python
 mkdir -p "$UV_PYTHON_INSTALL_DIR"
 /usr/local/bin/uv python install 3.12

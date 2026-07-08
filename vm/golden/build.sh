@@ -26,7 +26,7 @@ ARCH="${ARENABENCH_ARCH:-aarch64}"            # aarch64 (apple silicon) | amd64 
 # Debian publishes cloud images under date-stamped build-ID directories,
 # NOT semver point releases. Browse https://cloud.debian.org/images/cloud/bookworm/
 # to pick a stable build-ID (or use `latest` for the rolling pointer; not
-# recommended for the plan §3.B11 pin contract). The env name keeps the
+# recommended for a reproducible image pin). The env name keeps the
 # legacy `RELEASE` token for backward compat; the value is a build-ID.
 DEBIAN_RELEASE="${ARENABENCH_DEBIAN_RELEASE:-20260615-2510}"
 

@@ -159,9 +159,9 @@ logs/matches/demo-1v1/
   summary.json          # final outcome: result, winner, cause
   match.jsonl           # cross-agent events and state transitions
   orchestrator.log      # structured orchestrator log
+  proxy.jsonl           # egress proxy allow/deny log (allowlist mode only)
   vm/
     vm-console.log      # QEMU serial console output
-    proxy.jsonl         # egress proxy allow/deny log
   agents/
     00/
       events.jsonl      # harness_exit, turn_summary

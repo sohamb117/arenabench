@@ -1,9 +1,8 @@
-"""Gated e2e stubs for §9 scenarios not yet covered by deterministic configs.
+"""Gated e2e stubs for scenarios not yet covered by deterministic configs.
 
-Each test maps to the EXACT plan §9 binary observable and either runs a
-deterministic scenario when one exists OR skips with the engineering blocker
-stated so the audit trail records the deferral. Mappings verified against
-`.omo/plans/arenabench-build.md` §9 table.
+Each test maps to a specific binary observable and either runs a deterministic
+scenario when one exists OR skips with the engineering blocker stated so the
+audit trail records the deferral.
 
 S2  Explicit kill detection         — winner does `kill -9` against opponent's
                                        pid; agent0/bash.jsonl shows the kill
