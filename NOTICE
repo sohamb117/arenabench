@@ -1,0 +1,34 @@
+arenabench
+Copyright (c) 2026 arenabench contributors
+
+This product is licensed under the MIT License (see the LICENSE file).
+
+--------------------------------------------------------------------------------
+Third-party code
+--------------------------------------------------------------------------------
+
+The per-agent harness in `harness/` is adapted from the Terminus 2 agent in
+terminal-bench:
+
+    terminal-bench (Terminus 2)
+    https://github.com/laude-institute/terminal-bench  @ 1a6ffa9
+    Copyright (c) The terminal-bench authors
+    Licensed under the Apache License, Version 2.0
+
+Specifically, the following modules adapt Terminus 2's prompt/loop shape,
+response schema, chat-history management, LiteLLM wrapper, and tmux shell
+strategy. Each carries an attribution header pointing at the upstream commit:
+
+    harness/chat.py     — alternating-role chat history + trim/summarize
+    harness/llm.py      — LiteLLM completion wrapper + retry taxonomy
+    harness/parser.py   — {analysis, plan, commands, task_complete} JSON/XML parser
+    harness/shell.py    — tmux-backed persistent bash strategy
+    harness/loop.py     — main agent loop wiring
+
+A copy of the Apache License, Version 2.0 is available at:
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Per Apache-2.0 §4, the attribution notices above are retained. The remaining
+arenabench source (orchestrator/, common/, vm/, configs/, tests/) is original
+work under the MIT License.
