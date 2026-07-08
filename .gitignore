@@ -62,6 +62,7 @@ logs/*.jsonl
 *.pid
 *.sock
 *.lock
+!uv.lock
 
 # Secrets
 .env
