@@ -68,9 +68,7 @@ def test_new_match_rejects_bad_match_id(runner: CliRunner, tmp_path: pathlib.Pat
     a0 = _write_agent(tmp_path, "a0.json")
     a1 = _write_agent(tmp_path, "a1.json")
 
-    result = runner.invoke(
-        app, ["new-match", "-a", str(a0), "-a", str(a1), "--match-id", "bad id"]
-    )
+    result = runner.invoke(app, ["new-match", "-a", str(a0), "-a", str(a1), "--match-id", "bad id"])
 
     assert result.exit_code == 1
     assert "match_id" in (result.output + (result.stderr or ""))
