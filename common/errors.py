@@ -9,6 +9,10 @@ class _KwargError(ArenaError):
         self._kwargs = kwargs
         self.__dict__.update(kwargs)
 
+    @property
+    def message(self) -> str:
+        return self._message
+
     def _parts(self) -> list[str]:
         return [f"{key}={value}" for key, value in self._kwargs.items() if value is not None]
 

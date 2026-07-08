@@ -29,11 +29,11 @@ def check_referenced_files_exist(config: MatchConfig, base_dir: Path) -> None:
             agent_cfg = load_config(agent_path)
         except ConfigError as exc:
             raise ConfigError(
-                str(exc), path=str(agent_path), field=f"agents[{agent.slot}].config"
+                exc.message, path=str(agent_path), field=f"agents[{agent.slot}].config"
             ) from exc
         try:
             _ = read_system_prompt(agent_cfg, base_dir)
         except ConfigError as exc:
             raise ConfigError(
-                str(exc), path=exc.path, field=f"agents[{agent.slot}].system_prompt_path"
+                exc.message, path=exc.path, field=f"agents[{agent.slot}].system_prompt_path"
             ) from exc
