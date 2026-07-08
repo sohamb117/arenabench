@@ -37,8 +37,8 @@ This prompt is intentionally devoid of rules, tool listings, and opponent detail
 LLM credentials are only required for e2e runs:
 
 ```bash
-export ANTHROPIC_API_KEY=...   # used by configs/agents/claude-sonnet.json
-export OPENAI_API_KEY=...      # used by configs/agents/gpt-4o.json
+export ANTHROPIC_API_KEY=...   # used by configs/agents/claude.json
+export OPENAI_API_KEY=...      # used by configs/agents/gpt.json
 ```
 
 ### Install + test
@@ -131,8 +131,8 @@ Match definitions live in [`configs/matches/`](configs/matches/) and reference p
   "network_policy": "allowlist",
   "cgroup_limits": null,
   "agents": [
-    { "slot": 0, "user": "agent0", "config": "configs/agents/claude-sonnet.json" },
-    { "slot": 1, "user": "agent1", "config": "configs/agents/gpt-4o.json" }
+    { "slot": 0, "user": "agent0", "config": "configs/agents/claude.json" },
+    { "slot": 1, "user": "agent1", "config": "configs/agents/gpt.json" }
   ]
 }
 ```
