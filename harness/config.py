@@ -33,6 +33,7 @@ class AgentConfig(pydantic.BaseModel):
     num_retries: Annotated[int, pydantic.Field(ge=0, le=10)]
     fallbacks: list[str] | None = None
     reasoning_effort: _ReasoningEffort | None = None
+    api_mode: Literal["chat_completions", "responses"] = "chat_completions"
     parser: Literal["json", "xml"] = "json"
     api_key_env: Annotated[str, pydantic.Field(pattern=_ENV_KEY_PATTERN)] | None = None
     system_prompt_path: str

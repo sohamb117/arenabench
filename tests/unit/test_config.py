@@ -67,9 +67,21 @@ def test_load_config_valid_round_trips(tmp_path: pathlib.Path) -> None:
     assert cfg.request_timeout_s == EXPECTED_REQUEST_TIMEOUT_S
     assert cfg.num_retries == EXPECTED_NUM_RETRIES
     assert cfg.reasoning_effort == EXPECTED_REASONING_EFFORT
+    assert cfg.api_mode == "chat_completions"
     assert cfg.parser == EXPECTED_PARSER
     assert cfg.api_key_env == EXPECTED_API_KEY_ENV
     assert cfg.system_prompt_path == EXPECTED_SYSTEM_PROMPT_PATH
+
+
+def test_responses_api_mode_round_trips_for_copilot(tmp_path: pathlib.Path) -> None:
+    payload = _valid_payload()
+    payload["model"] = "github_copilot/gpt-5.5"
+    payload["api_key_env"] = None
+    payload["api_mode"] = "responses"
+
+    cfg = load_config(_write_config(tmp_path, payload))
+
+    assert cfg.api_mode == "responses"
 
 
 # ── field validation rejections ───────────────────────────────────────────────

@@ -14,6 +14,7 @@ from litellm import exceptions as litellm_exceptions
 from common.clock import elapsed_s, now_monotonic_s
 from common.errors import ArenaError
 from harness.llm_cost import completion_cost
+from harness.llm_responses import call_copilot_responses
 from harness.llm_types import CompletionResponse
 
 _RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})
@@ -42,6 +43,7 @@ type LlmFailureCategory = Literal[
     "provider_refusal",
     "reservation_error",
 ]
+type ApiMode = Literal["chat_completions", "responses"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +131,7 @@ def call(
     num_retries: int,
     fallbacks: list[str] | None,
     reasoning_effort: str | None = None,
+    api_mode: ApiMode = "chat_completions",
     api_key: str | None = None,
     mock_response: str | None = None,
     on_attempt: Callable[[int], None] | None = None,
@@ -173,6 +176,16 @@ def call(
             on_attempt(attempt)
         attempt_started = now_monotonic_s()
         try:
+            if api_mode == "responses":
+                return _responses_call(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    timeout_s=timeout_s,
+                    reasoning_effort=reasoning_effort,
+                    attempt=attempt,
+                    started=started,
+                )
             raw_response = completion(
                 model=model,
                 messages=messages,
@@ -237,6 +250,53 @@ def call(
         ),
         attempt=total_attempts - 1,
         parse_ok=False,
+    )
+
+
+def _responses_call(
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    timeout_s: float,
+    reasoning_effort: str | None,
+    attempt: int,
+    started: float,
+) -> LlmCallResult:
+    if not model.startswith("github_copilot/"):
+        raise LlmCallError(
+            "responses mode currently requires a GitHub Copilot model",
+            LlmFailureMetadata(category="provider_error", attempt=attempt),
+        )
+    response = call_copilot_responses(
+        model=model,
+        messages=messages,
+        max_output_tokens=max_tokens,
+        timeout_s=timeout_s,
+        reasoning_effort=reasoning_effort or "none",
+    )
+    if not response.content:
+        raise LlmCallError(
+            "provider returned no text: finish_reason=unknown",
+            LlmFailureMetadata(
+                category="provider_refusal",
+                attempt=attempt,
+                finish_reason="unknown",
+                prompt_tokens=response.input_tokens,
+                completion_tokens=response.output_tokens,
+                total_tokens=response.total_tokens,
+                latency_s=elapsed_s(started),
+            ),
+        )
+    return LlmCallResult(
+        content=response.content,
+        prompt_tokens=response.input_tokens,
+        completion_tokens=response.output_tokens,
+        total_tokens=response.total_tokens,
+        cost_usd=response.cost_usd,
+        latency_s=elapsed_s(started),
+        error=None,
+        attempt=attempt,
     )
 
 

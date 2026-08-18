@@ -6,6 +6,7 @@ import pytest
 from litellm import exceptions as litellm_exceptions
 
 from harness.llm import LlmCallError, LlmCallResult, call
+from harness.llm_responses import ResponsesResult
 from tests.unit._llm_fixtures import (
     API_KEY,
     COMPLETION_TOKENS,
@@ -182,6 +183,41 @@ def test_call_passes_reasoning_effort_when_provided() -> None:
 
     completion.assert_called_once()
     assert completion.call_args.kwargs["reasoning_effort"] == "medium"
+
+
+def test_call_normalizes_responses_result() -> None:
+    response = ResponsesResult(
+        content=CONTENT,
+        input_tokens=PROMPT_TOKENS,
+        output_tokens=COMPLETION_TOKENS,
+        total_tokens=TOTAL_TOKENS,
+        cost_usd=COST_USD,
+    )
+    with patch("harness.llm.call_copilot_responses", return_value=response) as responses:
+        result = call(
+            model="github_copilot/gpt-5.5",
+            messages=MESSAGES,
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            timeout_s=TIMEOUT_S,
+            num_retries=NUM_RETRIES,
+            fallbacks=None,
+            reasoning_effort="medium",
+            api_mode="responses",
+        )
+
+    assert result.content == CONTENT
+    assert result.prompt_tokens == PROMPT_TOKENS
+    assert result.completion_tokens == COMPLETION_TOKENS
+    assert result.total_tokens == TOTAL_TOKENS
+    assert result.cost_usd == COST_USD
+    responses.assert_called_once_with(
+        model="github_copilot/gpt-5.5",
+        messages=MESSAGES,
+        max_output_tokens=MAX_TOKENS,
+        timeout_s=TIMEOUT_S,
+        reasoning_effort="medium",
+    )
 
 
 def test_call_raises_llm_call_error_for_bad_request_error() -> None:
