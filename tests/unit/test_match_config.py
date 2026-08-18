@@ -1,5 +1,7 @@
 import pathlib
 
+import pytest
+
 from orchestrator.match_config import MatchConfig, load_match_config
 from tests.unit._match_config_helpers import (
     CPU_QUOTA_MS_PER_S,
@@ -16,6 +18,7 @@ from tests.unit._match_config_helpers import (
 )
 
 BUDGET_USD = 12.5
+ONE_YEAR_S = 31_536_000
 
 
 def test_valid_2_agent_config_parses_and_round_trips(tmp_path: pathlib.Path) -> None:
@@ -25,6 +28,28 @@ def test_valid_2_agent_config_parses_and_round_trips(tmp_path: pathlib.Path) -> 
 
     assert cfg.model_dump(mode="json") == valid_2_agent_payload()
     assert MatchConfig.model_validate(cfg.model_dump(mode="json")) == cfg
+
+
+def test_null_max_duration_loads_as_one_year(tmp_path: pathlib.Path) -> None:
+    payload = valid_2_agent_payload()
+    payload["max_duration_s"] = None
+
+    cfg = load_match_config(write_match(tmp_path, payload))
+
+    assert cfg.max_duration_s == ONE_YEAR_S
+    assert type(cfg.max_duration_s) is int
+
+
+@pytest.mark.parametrize("duration_s", [86_400, ONE_YEAR_S])
+def test_explicit_max_durations_through_one_year_are_preserved(
+    tmp_path: pathlib.Path, duration_s: int
+) -> None:
+    payload = valid_2_agent_payload()
+    payload["max_duration_s"] = duration_s
+
+    cfg = load_match_config(write_match(tmp_path, payload, f"match-{duration_s}.json"))
+
+    assert cfg.max_duration_s == duration_s
 
 
 def test_domain_allowlist_extra_defaults_none(tmp_path: pathlib.Path) -> None:

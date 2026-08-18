@@ -18,6 +18,8 @@ from tests.unit._match_config_helpers import (
     write_match,
 )
 
+ONE_YEAR_S = 31_536_000
+
 
 def test_user_must_match_slot_rejects_mismatched_user(tmp_path: pathlib.Path) -> None:
     payload = base_payload(
@@ -72,6 +74,19 @@ def test_heartbeat_interval_negative_raises_config_error(tmp_path: pathlib.Path)
     payload["heartbeat_interval_s"] = -1
     with pytest.raises(ConfigError):
         load_match_config(write_match(tmp_path, payload))
+
+
+@pytest.mark.parametrize("duration_s", [9, ONE_YEAR_S + 1])
+def test_max_duration_outside_bounds_raises_config_error(
+    tmp_path: pathlib.Path, duration_s: int
+) -> None:
+    payload = valid_2_agent_payload()
+    payload["max_duration_s"] = duration_s
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_match_config(write_match(tmp_path, payload))
+
+    assert exc_info.value.field == "max_duration_s"
 
 
 def test_agents_len_mismatch_raises_config_error_with_agents_field(tmp_path: pathlib.Path) -> None:

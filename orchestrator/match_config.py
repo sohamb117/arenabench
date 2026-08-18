@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 import pydantic
 
 from common.errors import ConfigError
 from common.ids import make_match_id
+
+ONE_YEAR_S: Final = 31_536_000
 
 
 def _is_none(value: float | None) -> bool:
@@ -42,7 +44,7 @@ class MatchConfig(pydantic.BaseModel):
     n_agents: int = pydantic.Field(ge=2, le=16)
     heartbeat_interval_s: int = pydantic.Field(ge=1, le=3600)
     grace_period_s: int = pydantic.Field(ge=1, le=600)
-    max_duration_s: int = pydantic.Field(ge=10, le=86400)
+    max_duration_s: int = pydantic.Field(ge=10, le=ONE_YEAR_S)
     archive_grace_s: int = pydantic.Field(default=60, ge=0, le=3600)
     network_policy: Literal["allowlist", "full"] = "allowlist"
     budget_usd: float | None = pydantic.Field(
@@ -68,6 +70,11 @@ class MatchConfig(pydantic.BaseModel):
             return str(make_match_id(value))
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
+
+    @pydantic.field_validator("max_duration_s", mode="before")
+    @classmethod
+    def _normalize_max_duration(cls, value: int | None) -> int:
+        return ONE_YEAR_S if value is None else value
 
     @pydantic.field_validator("domain_allowlist_extra")
     @classmethod
