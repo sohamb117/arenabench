@@ -106,7 +106,7 @@ class TranscriptReader:
             raise TranscriptError(f"run manifest is not a file: {path}")
         try:
             with path.open("rb") as handle:
-                raw = handle.readline(_MAX_MANIFEST_BYTES + 1)
+                raw = handle.read(_MAX_MANIFEST_BYTES + 1)
             if len(raw) > _MAX_MANIFEST_BYTES:
                 raise TranscriptError(f"oversized run manifest: {path}")
             return RunManifest.model_validate_json(raw)

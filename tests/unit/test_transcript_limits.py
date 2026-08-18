@@ -132,6 +132,17 @@ def test_manifest_rejects_invalid_run_id(tmp_path: Path) -> None:
         read_transcript(run)
 
 
+def test_reader_accepts_pretty_printed_multiline_manifest(tmp_path: Path) -> None:
+    run = exact_run(tmp_path)
+    manifest_path = run / "run.json"
+    manifest = _JSON_RECORD_ADAPTER.validate_json(manifest_path.read_text(encoding="utf-8"))
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    document = read_transcript(run)
+
+    assert document.run.match_id == "exact"
+
+
 def test_cli_malformed_error_does_not_reflect_sensitive_input(tmp_path: Path) -> None:
     run = exact_run(tmp_path)
     secret = "TOP_SECRET_123\x1b]0;owned\x07"

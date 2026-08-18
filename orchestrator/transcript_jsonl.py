@@ -12,7 +12,7 @@ from common.protocol import MAX_FRAME_BYTES, parse_envelope
 from orchestrator.transcript import TranscriptError
 from orchestrator.transcript_frames import Envelope
 
-MAX_TRANSCRIPT_FRAMES: Final = 10_000
+MAX_TRANSCRIPT_FRAMES: Final = 100_000
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 
 
