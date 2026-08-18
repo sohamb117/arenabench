@@ -56,6 +56,18 @@ def test_validate_accepts_valid_config(runner: CliRunner, tmp_path: pathlib.Path
     assert "n_agents=2" in result.stdout
 
 
+def test_validate_accepts_null_max_duration(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    payload = _valid_match_payload()
+    payload["max_duration_s"] = None
+    path = tmp_path / "match-null-duration.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = runner.invoke(app, ["validate", str(path)])
+
+    assert result.exit_code == 0
+    assert "OK match_id=demo-1v1" in result.stdout
+
+
 def test_validate_rejects_bad_config(runner: CliRunner, tmp_path: pathlib.Path) -> None:
     payload = _valid_match_payload()
     payload["n_agents"] = 20
