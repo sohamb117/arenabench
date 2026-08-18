@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import selectors
 import shlex
@@ -13,6 +14,7 @@ from common.protocol import MAX_FRAME_BYTES, Envelope, parse_envelope, serialize
 
 _GUEST_PYTHON = "/opt/arenabench-venv/bin/python3"
 _OPEN_PROBE_TIMEOUT_S = 1.0
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,8 +90,9 @@ class SshTransport:
                 continue
             try:
                 return parse_envelope(line.decode())
-            except (UnicodeDecodeError, ValueError) as exc:
-                raise self._error("invalid ssh frame") from exc
+            except (UnicodeDecodeError, ValueError):
+                _LOG.debug("discarding non-protocol SSH stdout line", extra={"bytes": len(line)})
+                continue
 
     def close(self) -> None:
         proc = self._proc
