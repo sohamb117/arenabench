@@ -25,7 +25,7 @@ echo "$(date -Iseconds) === arenabench customize.sh start ==="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip \
+    python3 python3-venv python3-pip build-essential \
     tmux git iptables ca-certificates curl xz-utils \
     dnsmasq-base systemd-container
 
@@ -48,8 +48,16 @@ mkdir -p "$UV_PYTHON_INSTALL_DIR"
 ARENABENCH_VENV=${ARENABENCH_VENV:-/opt/arenabench-venv}
 ARENABENCH_PKG_DIR=${ARENABENCH_PKG_DIR:-/opt/arenabench}
 if [[ -d "$ARENABENCH_PKG_DIR" ]]; then
+    # The pinned LiteLLM fork builds a native extension. Install its required
+    # Rust toolchain only for the wheel build, then remove it so agents see the
+    # same runtime tool surface as before.
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.94.1
+    export PATH="/root/.cargo/bin:$PATH"
     /usr/local/bin/uv venv --python 3.12 "$ARENABENCH_VENV"
     /usr/local/bin/uv pip install --python "$ARENABENCH_VENV/bin/python" "$ARENABENCH_PKG_DIR"
+    rm -rf /root/.cargo /root/.rustup
+    apt-get purge -y build-essential
+    apt-get autoremove -y --purge
     # Ensure non-root agents can read libs + execute python3. Capital X grants
     # +x only on directories and already-executable files (smart-execute mode).
     chmod -R a+rX "$ARENABENCH_VENV" "$UV_PYTHON_INSTALL_DIR" "$ARENABENCH_PKG_DIR"
@@ -108,4 +116,3 @@ apt list --installed 2>/dev/null \
 chmod 0644 /etc/arenabench/installed-packages.txt
 
 echo "$(date -Iseconds) === arenabench customize.sh done ==="
-
