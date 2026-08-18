@@ -175,3 +175,16 @@ Any domain not in this set is blocked with HTTP 403 from the proxy.
 
 5. **Validate:** `uv run arenabench validate <match.json>` — confirms the config parses
    and the system prompt file resolves before booting any VM.
+
+### Metadata requirements for capped matches
+
+ArenaBench has no provider/model price table or routing branches. For a capped match it
+uses only LiteLLM's public model metadata/catalog APIs and conservatively selects the
+maximum applicable numeric input/output token rates, including cache, long-context,
+service-tier, reasoning-output, tiered, and regional-uplift metadata. Unknown, malformed,
+negative/nonfinite, zero-only, non-token-priced, or incomplete entries fail before any
+VM or credential side effect. Nonempty `fallbacks` are also rejected for capped runs.
+
+If a valid model is rejected for missing pricing, add or correct its metadata in LiteLLM
+or your LiteLLM fork and update that dependency there. Never add a model identifier,
+provider branch, or rate constant to ArenaBench.

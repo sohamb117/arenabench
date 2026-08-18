@@ -18,7 +18,8 @@ This prompt is intentionally devoid of rules, tool listings, and opponent detail
 
 ## How it works
 
-1. You describe a **match** in JSON: how many agents, which model each one runs, timing, and network policy.
+1. You describe a **match** in JSON: how many agents, which model each one runs, timing,
+   network policy, and optional match-wide/per-agent USD caps.
 2. `arenabench run` boots one disposable Debian VM, creates a non-root user per agent, drops each agent's config + prompt in via cloud-init, and starts one **harness** process per agent.
 3. Each harness runs an LLM in a loop with a persistent bash shell (forked from terminal-bench's Terminus 2), reporting every command, response, and liveness signal back to the host-side **orchestrator**.
 4. The orchestrator watches liveness (dual-signal), declares a **winner** when one agent is the last alive through a grace period, writes `summary.json`, and destroys the VM.
@@ -74,10 +75,12 @@ uv run arenabench validate configs/matches/demo-1v1.json
 # generate a match from a list of agents (auto-assigns slots + users)
 uv run arenabench new-match -a configs/agents/claude.json -a configs/agents/gpt.json \
     --match-id my-1v1 --out configs/matches/my-1v1.json
+# Add --budget-usd and/or --per-agent-budget-usd to cap managed LiteLLM calls.
 
 # run a match end-to-end (needs a golden image + credentials)
 uv run arenabench run configs/matches/demo-1v1.json
 # → DONE result=victory winner=0 cause=opponent_crashed
+# Budgeted runs also include: spend=$…
 
 # pretty-print a finished match
 uv run arenabench replay logs/matches/demo-1v1/
@@ -134,6 +137,18 @@ A match references its agents by repo-root-relative path:
 
 Every field is documented in [configuration](docs/configuration.md). Both schemas are strict Pydantic v2 (`extra="forbid"`); `arenabench validate` additionally confirms every referenced file exists before a run starts.
 
+### Optional price caps
+
+`budget_usd` limits total managed-call exposure across the match;
+`per_agent_budget_usd` independently limits each slot. Either or both may be present.
+Before any credential, proxy, cloud-init, or VM side effect, ArenaBench derives a
+conservative token-price profile exclusively from LiteLLM's public model metadata. A
+capped run fails closed if a configured model is unknown, unpriced, malformed,
+non-token-priced, or has fallbacks. Every retry receives its own reservation, and an
+unresolved attempt is charged at its full reservation. These caps cover only LiteLLM
+completion calls made by the per-run ArenaBench harness; they are not account-wide
+provider budgets.
+
 ## Documentation
 
 | Guide | What's inside |
@@ -159,7 +174,7 @@ The pipeline downloads the Debian generic-cloud image, bakes in Python 3.12 + `u
 
 ```
 logs/matches/<match_id>/
-  summary.json      # final outcome: result, winner, cause
+  summary.json      # outcome, caps, and conservative spend by slot
   match.jsonl       # cross-cutting orchestrator + guest-probe events
   orchestrator.log  # structured host-side log
   agents/
@@ -212,7 +227,8 @@ The e2e suite ([`tests/e2e/`](tests/e2e/)) drives the production CLI against a r
 - vsock is unavailable on macOS Docker Desktop / colima; SSH is the default transport ([`orchestrator/ssh_server.py`](orchestrator/ssh_server.py)) and the vsock backend is a skeleton for future Linux hosts.
 - [`vm/CVES.md`](vm/CVES.md) is a placeholder — populate it via the documented snapshot procedure after your first golden build.
 
-Out of scope for v1: tournament/leaderboard runner, web or TUI viewer, cost-cap enforcement (cost is logged, not bounded), multi-host orchestration, and non-Debian guest images.
+Out of scope for v1: tournament/leaderboard runner, web or TUI viewer, account-wide
+provider budgeting, multi-host orchestration, and non-Debian guest images.
 
 ## License
 

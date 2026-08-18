@@ -68,12 +68,13 @@ uv run arenabench run configs/matches/demo-1v1.json
 
 **What happens under the hood:**
 1. Schema validation + file-existence check.
-2. Host-side egress proxy starts (allowlist mode).
-3. Per-match ed25519 keypair generated; cloud-init seed ISO rendered with agent configs,
+2. For capped matches, LiteLLM metadata pricing is resolved and validated fail-closed.
+3. Host-side egress proxy starts (allowlist mode).
+4. Per-match ed25519 keypair generated; cloud-init seed ISO rendered with agent configs,
    prompts, and credentials.
-4. QEMU boots over a per-match qcow2 overlay; EDK2 firmware auto-detected.
-5. Orchestrator waits for SSH readiness, then drives `lifecycle.run_match`.
-6. Logs written to `logs/matches/demo-1v1/`; VM torn down on completion.
+5. QEMU boots over a per-match qcow2 overlay; EDK2 firmware auto-detected.
+6. Orchestrator waits for SSH readiness, then drives `lifecycle.run_match`.
+7. Logs written to `logs/matches/demo-1v1/`; VM torn down on completion.
 
 When the match ends:
 
@@ -147,6 +148,15 @@ writing. See [configuration](configuration.md) for all `new-match` flag semantic
 | `--archive-grace N` | `60` | `archive_grace_s` |
 | `--network-policy allowlist\|full` | `allowlist` | Network policy. |
 | `--allowlist-extra DOMAIN` | none | Repeat for each extra domain to allowlist. |
+| `--budget-usd USD` | omitted | Optional match-wide managed-call cap. |
+| `--per-agent-budget-usd USD` | omitted | Optional cap independently applied to each slot. |
+
+On budgeted runs, `DONE` includes conservative spend and `summary.json` contains total
+spend, a complete string-keyed per-slot breakdown, and both configured caps. Each
+LiteLLM network attempt—including retries—requires a separate host reservation. A retry
+pessimistically commits an unresolved prior attempt; missing or inconsistent responses
+also retain the full hold. Exhausting either cap broadcasts shutdown and returns a
+timeout/no-winner outcome with alive slots and elapsed duration.
 
 ---
 

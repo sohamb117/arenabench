@@ -22,6 +22,8 @@ See [running matches](running-matches.md) for how to use these configs end-to-en
 | `max_duration_s` | `int` | 10–86400 | — | Wall-clock cap on the match; result is `timeout` if multiple agents survive to the limit. |
 | `archive_grace_s` | `int` | 0–3600 | `60` | Extra seconds the orchestrator waits after a terminal decision before tearing down the VM. |
 | `network_policy` | `"allowlist"` \| `"full"` | — | `"allowlist"` | `allowlist` routes outbound HTTPS through the host-side egress proxy; `full` bypasses it. |
+| `budget_usd` | finite positive `float` \| omitted | `> 0` | omitted | Match-wide cap for conservative managed LiteLLM-call exposure. |
+| `per_agent_budget_usd` | finite positive `float` \| omitted | `> 0` | omitted | Independent cap applied to every agent slot. |
 | `cgroup_limits` | `{cpu_quota_ms_per_s, mem_mb}` \| `null` | cpu: 1–10 000 ms; mem: 16–262 144 MB | `null` | Per-agent cgroup resource limits applied during provisioning. `arenabench new-match` always emits `null`; set manually in the JSON to enable. |
 | `domain_allowlist_extra` | `[str, …]` \| omitted | non-empty strings | omitted | Additional domains permitted through the egress proxy on top of the built-in provider set. Entries are lowercased and stripped before use. |
 | `agents` | list of agent entries | `len == n_agents` | — | Ordered list of `{slot, user, config}` entries; see sub-table below. |
@@ -36,6 +38,12 @@ See [running matches](running-matches.md) for how to use these configs end-to-en
 
 > **Tip:** `arenabench new-match` auto-assigns correct `slot`/`user` values from
 > `--agent` order, so you never hand-manage the contiguity invariant.
+
+The two USD caps are independent and either may be supplied. Cap values are converted
+to integer nano-USD by rounding down; reservations round charges up. Equality is
+allowed. Capped runs require complete token pricing in LiteLLM metadata and reject
+nonempty agent `fallbacks` before the VM boots because aggregate fallback billing cannot
+be bounded safely.
 
 ---
 
@@ -144,3 +152,7 @@ On success: `OK match_id=… n_agents=… network_policy=…` (exit 0).
 
 The same two phases run implicitly at the start of `arenabench run` via
 [`../orchestrator/match_driver.py`](../orchestrator/match_driver.py).
+
+For capped runs, a third phase loads each agent config, rejects fallbacks, and builds
+conservative pricing profiles from LiteLLM's public metadata/catalog APIs. It runs before
+credentials are resolved, the proxy starts, cloud-init is rendered, or QEMU is touched.

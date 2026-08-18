@@ -176,3 +176,19 @@ agents appear to die from silence shortly after the match starts.
 | GitHub Copilot token missing | Ensure `~/.config/litellm/github_copilot/access-token` exists and is valid. See [models & auth](models-and-auth.md). |
 | Wrong model ID | Verify `model` in your agent config is a valid LiteLLM `provider/model` string. |
 | Domain not allowlisted | See "Egress proxy blocked a request" above. |
+
+---
+
+## Capped match rejected before VM boot
+
+**Symptom:** `arenabench run` exits with an unsafe LiteLLM pricing or fallback error,
+before credentials, proxy, cloud-init, or QEMU activity.
+
+**Cause:** At least one primary model is unknown, unpriced, malformed,
+non-token-priced, or zero-only in LiteLLM's metadata, or the capped agent config has a
+nonempty fallback list.
+
+**Fix:** Remove fallbacks for the capped run. For missing/incorrect prices, add the model
+metadata to LiteLLM or the LiteLLM fork used by your installation. Do not patch a model
+name, provider rule, or price into ArenaBench. Uncapped legacy runs do not perform this
+metadata preflight.

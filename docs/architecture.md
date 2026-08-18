@@ -42,6 +42,21 @@ Every state transition is written to `match.jsonl` as a `match_state_change` fra
 The final `MatchOutcome` is written to `logs/matches/<match_id>/summary.json`
 (validated against `orchestrator/schemas/summary.schema.json`).
 
+### Managed-call price caps
+
+Optional match-wide and per-agent caps are enforced by a lifecycle-thread-owned
+fixed-point ledger. Before side effects, the host creates immutable conservative pricing
+profiles from LiteLLM public metadata. During provisioning, capped runs require the
+current budget protocol capability. Before each `litellm.completion()` attempt, the
+harness sends bounded prompt/output data and waits synchronously for a correlated grant;
+denial, timeout, shutdown, mismatch, stale data, or channel closure means no provider
+call. Retries require new grants and unresolved attempts commit their full holds.
+
+Reservations count committed spend plus all active holds globally and per slot. Equality
+with a cap is allowed; exhausting either cap broadcasts `Shutdown` and terminates as a
+timeout with no winner. Accounting covers only completion calls made by harnesses in that
+ArenaBench run, not external or account-wide usage.
+
 ---
 
 ## Dual-signal liveness
