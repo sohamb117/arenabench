@@ -206,6 +206,10 @@ uv run arenabench replay logs/matches/demo-1v1/
 ```
 
 `replay` prints the contents of `summary.json` with `json.dumps(…, indent=2, sort_keys=True)`.
+
+Harness stderr is stored privately at `agents/<slot>/stderr.log`. Inspect it
+alongside `arenabench transcript` when a harness disconnects without emitting
+an explicit `harness_exit` frame.
 The same direct-path command works for an archived run by passing its archive directory.
 
 Render the complete turn-by-turn record:

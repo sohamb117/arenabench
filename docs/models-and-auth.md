@@ -154,7 +154,7 @@ Any domain not in this set is blocked with HTTP 403 from the proxy.
      "model": "myprovider/my-model",
      "api_key_env": "MY_PROVIDER_API_KEY",
      "temperature": 0.0,
-     "max_tokens": 4096,
+      "max_output_tokens": 4096,
      "request_timeout_s": 60,
      "num_retries": 3,
      "parser": "json",

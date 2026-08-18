@@ -55,7 +55,8 @@ be bounded safely.
 |---|---|---|---|---|
 | `model` | `str` | min length 1; LiteLLM `provider/model` id | — | The LLM to call (e.g. `"anthropic/claude-opus-4-7"`). |
 | `temperature` | `float` | 0.0–2.0 | — | Sampling temperature passed to LiteLLM. |
-| `max_tokens` | `int` | 1–200 000 | — | Maximum completion tokens per turn. |
+| `max_output_tokens` | `int` | 1–200 000 | — | Maximum completion tokens per turn. Legacy `max_tokens` remains accepted as an input alias. |
+| `max_context_tokens` | `int` \| `null` | 1–10 000 000 | `null` | Chat-history capacity. When omitted, the host resolves LiteLLM's `max_input_tokens` before guest provisioning. |
 | `request_timeout_s` | `int` | 1–600 | — | Per-request LLM call timeout in seconds. |
 | `num_retries` | `int` | 0–10 | — | LiteLLM retry count on transient errors. |
 | `fallbacks` | `[str, …]` \| `null` | — | `null` | LiteLLM fallback model list. |
@@ -110,7 +111,7 @@ Based on [`../configs/agents/claude.json`](../configs/agents/claude.json):
 {
   "model": "anthropic/claude-opus-4-7",  // LiteLLM provider/model id
   "temperature": 0.0,
-  "max_tokens": 4096,
+  "max_output_tokens": 4096,
   "request_timeout_s": 60,
   "num_retries": 3,
   "fallbacks": null,
