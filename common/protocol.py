@@ -15,7 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
 MAX_FRAME_BYTES = 64 * 1024
 _MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True)
 _RAW_ENVELOPE_ADAPTER: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
-_ORCH_TO_HARNESS_KINDS: frozenset[str] = frozenset({"heartbeat_tick", "shutdown"})
+_ORCH_TO_HARNESS_KINDS: frozenset[str] = frozenset(
+    {"heartbeat_tick", "shutdown", "budget_capability", "llm_reservation_decision"}
+)
 
 
 class _Frame(BaseModel):
@@ -36,6 +38,7 @@ class PidAnnounce(_Frame):
     hostname: str
     parser: Literal["json", "xml"]
     model: str
+    budget_capability_version: Literal[1] | None = None
 
 
 class BashRequest(_Frame):
@@ -64,13 +67,32 @@ class LlmRequest(_Frame):
     prompt_chars: int
     temperature: float
     last_user_excerpt: str = ""
-    attempt: int = 0
+    attempt: int = Field(default=0, ge=0, le=10)
+    prompt_tokens: int | None = Field(default=None, ge=0, le=10_000_000)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=200_000)
+    fallback_models: list[str] | None = Field(default=None, max_length=16)
+
+
+class BudgetCapability(_Frame):
+    kind: Literal["budget_capability"] = "budget_capability"
+    version: Literal[1]
+    enabled: bool
+
+
+class LlmReservationDecision(_Frame):
+    kind: Literal["llm_reservation_decision"] = "llm_reservation_decision"
+    request_id: str = Field(min_length=1, max_length=128)
+    attempt: int = Field(ge=0, le=10)
+    granted: bool
+    reason: str = Field(min_length=1, max_length=128)
+    reserved_nano_usd: int = Field(default=0, ge=0)
 
 
 class LlmResponse(_Frame):
     kind: Literal["llm_response"] = "llm_response"
     turn: int
     request_id: str
+    attempt: int = Field(default=0, ge=0, le=10)
     content: str
     parser: Literal["json", "xml"]
     parse_ok: bool
@@ -181,6 +203,8 @@ Frame = Annotated[
     | BashRequest
     | BashResult
     | LlmRequest
+    | BudgetCapability
+    | LlmReservationDecision
     | LlmResponse
     | HeartbeatInjected
     | TurnSummary
