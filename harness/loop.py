@@ -163,24 +163,6 @@ def _handle_inbound(env: proto.Envelope, chat: Chat, state: _State) -> int | Non
     return None
 
 
-_LAST_USER_EXCERPT_MAX = 512
-
-
-def _last_user_excerpt(messages: list[dict[str, str]]) -> str:
-    """Return the bounded TAIL of the last user-role message.
-
-    Tail (not head) so an appended `[HEARTBEAT t=...]` suffix on a long
-    terminal-output user turn is still observable in `api.jsonl` — plan §9 S4
-    binary observable cannot rely on the heartbeat landing in the first 512
-    chars.
-    """
-    for message in reversed(messages):
-        if message.get("role") == "user":
-            content = message.get("content", "")
-            return content[-_LAST_USER_EXCERPT_MAX:]
-    return ""
-
-
 def _llm_turn(
     state: _State, chat: Chat, tmux: shell.TmuxShell, cfg: config.AgentConfig, api_key: str | None
 ) -> parser.ParsedResponse | None:
@@ -194,7 +176,7 @@ def _llm_turn(
     request_id = f"llm-{state.turn}-{uuid.uuid4().hex[:_ID_BYTES]}"
     messages = helpers.chat_history_for_litellm(chat)
     prompt_chars = sum(len(message["content"]) for message in messages)
-    last_excerpt = _last_user_excerpt(messages)
+    last_excerpt = attempt_logging.last_user_excerpt(messages)
     prompt_tokens = chat.prompt_tokens
     current_attempt = 0
 
@@ -241,10 +223,17 @@ def _llm_turn(
                 raise attempt_logging.reservation_error(
                     identity, f"reservation denied: {decision.reason}"
                 )
+        if not attempt_logging.emit_context(state.emit, identity, messages):
+            _LOG.warning("failed to emit context_logging_error")
+
+    def _emit_failure(error: llm.LlmCallError) -> None:
+        identity = attempt_logging.AttemptIdentity(
+            state.turn, request_id, error.attempt if error.attempt is not None else current_attempt
+        )
         try:
-            state.emit(attempt_logging.context_snapshot(identity, messages))
-        except ValueError as exc:
-            raise attempt_logging.context_too_large(identity) from exc
+            state.emit(attempt_logging.failure_frame(identity, error))
+        except (TransportError, ValueError):
+            _LOG.warning("failed to emit llm_attempt_failure")
 
     try:
         result = llm.call(
@@ -259,6 +248,7 @@ def _llm_turn(
             api_key=api_key,
             mock_response=cfg.mock_response,
             on_attempt=_emit_attempt,
+            on_failure=_emit_failure,
         )
     except llm.LlmCallError as exc:
         identity = attempt_logging.AttemptIdentity(state.turn, request_id, current_attempt)

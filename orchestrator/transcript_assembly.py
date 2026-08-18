@@ -2,22 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from common.context_protocol import LlmContextChunk
 from orchestrator.transcript import (
     Attempt,
     Command,
     CommandResult,
-    Context,
-    Message,
     ProviderFailure,
     Reply,
     RequestMetadata,
     Reservation,
     Turn,
     TurnSummary,
-    UnavailableContext,
     UnavailableOutcome,
     Usage,
 )
+from orchestrator.transcript_context import assemble_context
 from orchestrator.transcript_frames import (
     BashRequestFrame,
     BashResultFrame,
@@ -40,6 +39,7 @@ class AttemptKey:
 class AssemblyInput:
     requests: dict[AttemptKey, RequestFrame]
     contexts: dict[AttemptKey, ContextFrame]
+    context_chunks: dict[AttemptKey, list[LlmContextChunk]]
     failures: dict[AttemptKey, FailureFrame]
     responses: dict[AttemptKey, ResponseFrame]
     bash_requests: list[BashRequestFrame]
@@ -104,14 +104,10 @@ def _build_attempt(
         fallback_models=request.fallback_models,
         last_user_excerpt=request.last_user_excerpt,
     )
-    context_model = (
-        UnavailableContext(reason="legacy_log" if source.legacy else "not_recorded")
-        if context is None
-        else Context(
-            messages=tuple(
-                Message(role=message.role, content=message.content) for message in context.messages
-            )
-        )
+    context_model = assemble_context(
+        context,
+        source.context_chunks.get(key, ()),
+        legacy=source.legacy,
     )
     usage: Usage | None = None
     latency_s: float | None = None

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,8 +21,8 @@ from orchestrator.transcript_assembly import AssemblyInput, AttemptKey, build_tu
 from orchestrator.transcript_frames import (
     BashRequestFrame,
     BashResultFrame,
+    ContextChunkFrame,
     ContextFrame,
-    Envelope,
     FailureFrame,
     HarnessExitFrame,
     RequestFrame,
@@ -32,8 +31,8 @@ from orchestrator.transcript_frames import (
     StateChangeFrame,
     TurnSummaryFrame,
 )
+from orchestrator.transcript_jsonl import epoch_lines, read_jsonl
 
-_MAX_LINE_BYTES: Final = 1_048_576
 _AGENT_NAME_WIDTH: Final = 2
 _AGENT_FILES: Final = ("context.jsonl", "api.jsonl", "bash.jsonl", "events.jsonl")
 
@@ -104,7 +103,7 @@ class TranscriptReader:
                 raise TranscriptError("--legacy-run cannot be used with an isolated run")
             return _Epoch(index=0, count=1, start=None, end=None)
         starts: list[datetime] = []
-        for envelope in self._read_jsonl(self._path / "match.jsonl"):
+        for envelope in read_jsonl(self._path / "match.jsonl"):
             if envelope.kind != "match_state_change":
                 continue
             try:
@@ -141,7 +140,7 @@ class TranscriptReader:
 
     def _reservations(self, epoch: _Epoch) -> dict[tuple[int, str, int], Reservation]:
         reservations: dict[tuple[int, str, int], Reservation] = {}
-        for envelope in self._epoch_lines(self._path / "match.jsonl", epoch):
+        for envelope in epoch_lines(self._path / "match.jsonl", epoch.start, epoch.end):
             if envelope.kind != "llm_reservation_decision":
                 continue
             try:
@@ -171,10 +170,11 @@ class TranscriptReader:
         envelopes = [
             envelope
             for name in _AGENT_FILES
-            for envelope in self._epoch_lines(directory / name, epoch)
+            for envelope in epoch_lines(directory / name, epoch.start, epoch.end)
         ]
         requests: dict[AttemptKey, RequestFrame] = {}
         contexts: dict[AttemptKey, ContextFrame] = {}
+        context_chunks: dict[AttemptKey, list[ContextChunkFrame]] = {}
         failures: dict[AttemptKey, FailureFrame] = {}
         responses: dict[AttemptKey, ResponseFrame] = {}
         bash_requests: list[BashRequestFrame] = []
@@ -190,6 +190,10 @@ class TranscriptReader:
                     case "llm_context_snapshot":
                         frame = ContextFrame.model_validate(envelope.data)
                         contexts[AttemptKey(frame.turn, frame.request_id, frame.attempt)] = frame
+                    case "llm_context_chunk":
+                        frame = ContextChunkFrame.model_validate(envelope.data)
+                        key = AttemptKey(frame.turn, frame.request_id, frame.attempt)
+                        context_chunks.setdefault(key, []).append(frame)
                     case "llm_attempt_failure":
                         frame = FailureFrame.model_validate(envelope.data)
                         failures[AttemptKey(frame.turn, frame.request_id, frame.attempt)] = frame
@@ -214,6 +218,7 @@ class TranscriptReader:
             AssemblyInput(
                 requests=requests,
                 contexts=contexts,
+                context_chunks=context_chunks,
                 failures=failures,
                 responses=responses,
                 bash_requests=bash_requests,
@@ -235,31 +240,3 @@ class TranscriptReader:
             )
         )
         return Agent(slot=slot, turns=turns, harness_exit=exit_model)
-
-    def _read_jsonl(self, path: Path) -> Iterator[Envelope]:
-        if not path.exists():
-            return
-        if path.is_symlink() or not path.is_file():
-            raise TranscriptError(f"log path is not a file: {path}")
-        try:
-            with path.open("rb") as handle:
-                for line_number, raw in enumerate(handle, start=1):
-                    if len(raw) > _MAX_LINE_BYTES:
-                        raise TranscriptError(f"oversized JSONL line at {path}:{line_number}")
-                    if not raw.strip():
-                        continue
-                    try:
-                        yield Envelope.model_validate_json(raw)
-                    except ValidationError as exc:
-                        location = f"{path}:{line_number}"
-                        raise TranscriptError(f"malformed JSONL at {location}: {exc}") from exc
-        except OSError as exc:
-            raise TranscriptError(f"cannot read log {path}: {exc}") from exc
-
-    def _epoch_lines(self, path: Path, epoch: _Epoch) -> Iterator[Envelope]:
-        for envelope in self._read_jsonl(path):
-            if epoch.start is not None and envelope.ts < epoch.start:
-                continue
-            if epoch.end is not None and envelope.ts >= epoch.end:
-                continue
-            yield envelope

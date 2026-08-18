@@ -48,7 +48,17 @@ class Context(TranscriptModel):
 
 class UnavailableContext(TranscriptModel):
     kind: Literal["unavailable"] = "unavailable"
-    reason: Literal["legacy_log", "not_recorded"]
+    reason: Literal[
+        "hash_mismatch",
+        "invalid_base64",
+        "invalid_payload",
+        "legacy_log",
+        "metadata_mismatch",
+        "missing_chunks",
+        "not_recorded",
+        "out_of_order_chunks",
+        "size_mismatch",
+    ]
 
 
 class RequestMetadata(TranscriptModel):
@@ -75,7 +85,11 @@ class Reply(TranscriptModel):
 class ProviderFailure(TranscriptModel):
     kind: Literal["failure"] = "failure"
     category: Literal[
-        "context_too_large", "provider_error", "provider_refusal", "reservation_error"
+        "context_logging_error",
+        "context_too_large",
+        "provider_error",
+        "provider_refusal",
+        "reservation_error",
     ]
     finish_reason: str | None = None
     error_text: str

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Final
 
-from orchestrator.transcript import Attempt, TranscriptDocument
+from orchestrator.transcript import Attempt, Context, TranscriptDocument, UnavailableContext
 
 _ANSI_ESCAPE: Final = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -18,12 +18,12 @@ def _plain(value: str) -> str:
 
 def _context_lines(attempt: Attempt) -> list[str]:
     lines = ["CONTEXT"]
-    match attempt.context.kind:
-        case "context":
-            for message in attempt.context.messages:
+    match attempt.context:
+        case Context(messages=messages):
+            for message in messages:
                 lines.extend((f"[{message.role}]", _plain(message.content)))
-        case "unavailable":
-            label = "legacy log" if attempt.context.reason == "legacy_log" else "not recorded"
+        case UnavailableContext(reason=reason):
+            label = reason.replace("_", " ")
             lines.append(f"[context unavailable: {label}]")
     return lines
 

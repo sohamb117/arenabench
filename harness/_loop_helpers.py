@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Literal, Protocol
 
 from common import protocol as proto
-from harness import llm, parser, shell
+from harness import attempt_logging, llm, parser, shell
 from harness.chat import Chat
 
 Emit = Callable[[proto.Frame], None]
@@ -38,7 +38,7 @@ def build_llm_response(
         total_tokens=result.total_tokens,
         cost_usd=result.cost_usd,
         latency_s=result.latency_s,
-        error=error,
+        error=attempt_logging.safe_error_text(error) if error is not None else None,
     )
 
 
@@ -53,7 +53,7 @@ def parse_or_record_error(
     try:
         parsed = parser.parse(result.content, mode=mode)
     except parser.ParseError as exc:
-        emit(build_llm_response(result, mode, turn, request_id, False, str(exc)))
+        emit(build_llm_response(result, mode, turn, request_id, False, result.error or str(exc)))
         chat.append_assistant(result.content)
         chat.append_user(
             f"Your previous response did not parse as {mode}: {exc}. "

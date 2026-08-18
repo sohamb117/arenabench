@@ -112,7 +112,7 @@ class MatchLogger:
             return files.bash
         if kind in {"llm_request", "llm_response", "heartbeat_injected"}:
             return files.api
-        if kind in {"llm_context_snapshot", "llm_attempt_failure"}:
+        if kind in {"llm_context_chunk", "llm_context_snapshot", "llm_attempt_failure"}:
             return files.context
         if kind in {"turn_summary", "harness_exit"}:
             return files.events

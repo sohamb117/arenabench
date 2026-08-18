@@ -122,22 +122,30 @@ def run_harness_thread(
     attempts_per_call: Sequence[Sequence[int]] | None = None,
     initial_template: str = "initial task",
     system_prompt: str = "system prompt",
+    failure_plans: Sequence[Sequence[harness.llm.LlmCallError]] | None = None,
 ) -> HarnessRun:
     transport = InMemoryTransport()
     result: dict[str, RunResult] = {}
     captured_messages: list[list[dict[str, str]]] = []
     calls = iter(responses)
     attempt_plans = iter(attempts_per_call) if attempts_per_call is not None else None
+    failures = iter(failure_plans) if failure_plans is not None else None
     peer = transport.peer()
     if send_capability:
         send(peer, BudgetCapability(version=1, enabled=budget_enabled))
 
     def fake_call(**kwargs: object) -> LlmCallResult:
         on_attempt = kwargs.get("on_attempt")
+        on_failure = kwargs.get("on_failure")
         if on_attempt is not None:
             planned_attempts = next(attempt_plans) if attempt_plans is not None else [0]
-            for attempt in planned_attempts:
+            planned_failures = next(failures) if failures is not None else ()
+            for index, attempt in enumerate(planned_attempts):
                 cast(Callable[[int], None], on_attempt)(attempt)
+                if on_failure is not None and index < len(planned_failures):
+                    cast(Callable[[harness.llm.LlmCallError], None], on_failure)(
+                        planned_failures[index]
+                    )
         messages_obj = kwargs.get("messages")
         if isinstance(messages_obj, list):
             snapshot: list[dict[str, str]] = []

@@ -5,6 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from common.context_protocol import LlmContextChunk as ContextChunkFrame
+
 
 class FrameModel(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -35,7 +37,11 @@ class FailureFrame(FrameModel):
     request_id: str
     attempt: int = 0
     category: Literal[
-        "context_too_large", "provider_error", "provider_refusal", "reservation_error"
+        "context_logging_error",
+        "context_too_large",
+        "provider_error",
+        "provider_refusal",
+        "reservation_error",
     ]
     finish_reason: str | None = None
     error_text: str
@@ -127,6 +133,7 @@ class StateChangeFrame(FrameModel):
 
 type AgentFrame = (
     ContextFrame
+    | ContextChunkFrame
     | FailureFrame
     | RequestFrame
     | ResponseFrame

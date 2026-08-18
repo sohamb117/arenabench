@@ -12,6 +12,10 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
+from common.context_protocol import LlmContextChunk, LlmContextSnapshot, LlmMessage
+
+__all__ = ["LlmContextChunk", "LlmContextSnapshot", "LlmMessage"]
+
 MAX_FRAME_BYTES = 64 * 1024
 _MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True)
 _RAW_ENVELOPE_ADAPTER: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
@@ -102,20 +106,7 @@ class LlmResponse(_Frame):
     total_tokens: int
     cost_usd: float | None = None
     latency_s: float
-    error: str | None = None
-
-
-class LlmMessage(_Frame):
-    role: Literal["system", "user", "assistant", "tool"]
-    content: str
-
-
-class LlmContextSnapshot(_Frame):
-    kind: Literal["llm_context_snapshot"] = "llm_context_snapshot"
-    turn: int = Field(ge=0)
-    request_id: str = Field(min_length=1, max_length=128)
-    attempt: int = Field(ge=0, le=10)
-    messages: list[LlmMessage] = Field(min_length=1)
+    error: str | None = Field(default=None, max_length=1024)
 
 
 class LlmAttemptFailure(_Frame):
@@ -124,7 +115,11 @@ class LlmAttemptFailure(_Frame):
     request_id: str = Field(min_length=1, max_length=128)
     attempt: int = Field(ge=0, le=10)
     category: Literal[
-        "context_too_large", "provider_error", "provider_refusal", "reservation_error"
+        "context_logging_error",
+        "context_too_large",
+        "provider_error",
+        "provider_refusal",
+        "reservation_error",
     ]
     finish_reason: str | None = Field(default=None, max_length=128)
     error_text: str = Field(min_length=1, max_length=1024)
@@ -238,6 +233,7 @@ Frame = Annotated[
     | LlmReservationDecision
     | LlmResponse
     | LlmContextSnapshot
+    | LlmContextChunk
     | LlmAttemptFailure
     | HeartbeatInjected
     | TurnSummary

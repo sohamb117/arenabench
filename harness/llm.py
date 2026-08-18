@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
@@ -14,16 +13,13 @@ from litellm import exceptions as litellm_exceptions
 
 from common.clock import elapsed_s, now_monotonic_s
 from common.errors import ArenaError
+from harness.llm_cost import completion_cost
+from harness.llm_types import CompletionResponse
 
 _RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})
 _FATAL_STATUS_CODES = frozenset({400, 401, 403, 404, 422})
 _SERVER_ERROR_MIN = 500
 _SERVER_ERROR_MAX = 599
-_MAX_ERROR_TEXT_CHARS = 1024
-_CREDENTIAL_PATTERNS = (
-    re.compile(r"(?i)(authorization\s*:\s*(?:bearer|basic)\s+)[^\s,;]+"),
-    re.compile(r"(?i)((?:api[_-]?key|access[_-]?token|secret)\s*[=:]\s*)[^\s,;]+"),
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +36,11 @@ class LlmCallResult:
 
 
 type LlmFailureCategory = Literal[
-    "context_too_large", "provider_error", "provider_refusal", "reservation_error"
+    "context_logging_error",
+    "context_too_large",
+    "provider_error",
+    "provider_refusal",
+    "reservation_error",
 ]
 
 
@@ -102,26 +102,6 @@ class LlmCallError(ArenaError):
         return self.metadata.latency_s if self.metadata is not None else None
 
 
-class _Message(Protocol):
-    content: str | None
-
-
-class _Choice(Protocol):
-    message: _Message
-    finish_reason: str | None
-
-
-class _Usage(Protocol):
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-
-
-class _CompletionResponse(Protocol):
-    choices: list[_Choice]
-    usage: _Usage
-
-
 class _LiteLlmCompletion(Protocol):
     def __call__(
         self,
@@ -152,6 +132,7 @@ def call(
     api_key: str | None = None,
     mock_response: str | None = None,
     on_attempt: Callable[[int], None] | None = None,
+    on_failure: Callable[[LlmCallError], None] | None = None,
 ) -> LlmCallResult:
     """
     Single LiteLLM completion call. Times out after timeout_s; retries
@@ -190,6 +171,7 @@ def call(
     for attempt in range(total_attempts):
         if on_attempt is not None:
             on_attempt(attempt)
+        attempt_started = now_monotonic_s()
         try:
             raw_response = completion(
                 model=model,
@@ -203,7 +185,7 @@ def call(
                 reasoning_effort=reasoning_effort,
                 api_key=api_key,
             )
-            response = cast(_CompletionResponse, raw_response)
+            response = cast(CompletionResponse, raw_response)
             content = response.choices[0].message.content
             if content is None:
                 finish_reason = response.choices[0].finish_reason or "unknown"
@@ -224,7 +206,7 @@ def call(
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
                 total_tokens=response.usage.total_tokens,
-                cost_usd=_completion_cost(response),
+                cost_usd=completion_cost(response),
                 latency_s=elapsed_s(started),
                 error=None,
                 attempt=attempt,
@@ -233,10 +215,13 @@ def call(
             if isinstance(exc, LlmCallError):
                 raise
             if _is_fatal(exc):
-                raise _provider_error(exc, attempt, started) from exc
+                raise _provider_error(exc, attempt, attempt_started) from exc
             if not _is_retryable(exc):
-                raise _provider_error(exc, attempt, started) from exc
+                raise _provider_error(exc, attempt, attempt_started) from exc
             last_retryable = exc
+            failure = _provider_error(exc, attempt, attempt_started)
+            if on_failure is not None:
+                on_failure(failure)
 
     return LlmCallResult(
         content="",
@@ -245,18 +230,14 @@ def call(
         total_tokens=0,
         cost_usd=None,
         latency_s=elapsed_s(started),
-        error=str(last_retryable) if last_retryable is not None else "llm call failed",
+        error=(
+            _provider_error(last_retryable, total_attempts - 1, started).error_text
+            if last_retryable is not None
+            else "llm call failed"
+        ),
         attempt=total_attempts - 1,
         parse_ok=False,
     )
-
-
-def _completion_cost(response: _CompletionResponse) -> float | None:
-    try:
-        raw_cost = litellm.completion_cost(completion_response=response)
-    except Exception:
-        return None
-    return float(raw_cost)
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -287,12 +268,11 @@ def _status_code(exc: Exception) -> int:
 
 
 def _provider_error(exc: Exception, attempt: int, started: float) -> LlmCallError:
+    from harness.attempt_logging import safe_error_text  # noqa: PLC0415
+
     status_code = _status_code(exc)
-    error_text = str(exc)[:_MAX_ERROR_TEXT_CHARS]
-    for pattern in _CREDENTIAL_PATTERNS:
-        error_text = pattern.sub(r"\1[REDACTED]", error_text)
     return LlmCallError(
-        error_text,
+        safe_error_text(str(exc)),
         LlmFailureMetadata(
             category="provider_error",
             attempt=attempt,
