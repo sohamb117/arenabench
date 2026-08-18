@@ -26,7 +26,10 @@ def resolve_context_limits(
         if config.max_context_tokens is not None:
             limits[entry.slot] = config.max_context_tokens
             continue
-        metadata = load_metadata(config.model)
+        lookup_model = config.model
+        if lookup_model.startswith("github_copilot/"):
+            lookup_model = lookup_model.removeprefix("github_copilot/").removeprefix("responses/")
+        metadata = load_metadata(lookup_model)
         raw_limit = metadata.get("max_input_tokens")
         if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or raw_limit < 1:
             raise ConfigError(

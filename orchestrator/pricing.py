@@ -70,7 +70,10 @@ def derive_pricing_profiles(
 
 
 def _load_litellm_metadata(model: str) -> ModelMetadata:
-    return _METADATA_ADAPTER.validate_python(litellm.get_model_info(model))
+    lookup_model = model
+    if model.startswith("github_copilot/"):
+        lookup_model = model.removeprefix("github_copilot/").removeprefix("responses/")
+    return _METADATA_ADAPTER.validate_python(litellm.get_model_info(lookup_model))
 
 
 def _derive_profile(model: str, metadata: ModelMetadata) -> PricingProfile:

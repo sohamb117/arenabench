@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from unittest.mock import patch
 
 import pytest
 
@@ -109,6 +110,20 @@ def test_profile_rejects_unsafe_metadata(metadata: ModelMetadata, reason: str) -
 def test_profile_rejects_unknown_model() -> None:
     with pytest.raises(PricingError, match="unknown"):
         derive_pricing_profiles(("provider/unknown",), loader=_loader({}))
+
+
+def test_copilot_pricing_uses_canonical_model_metadata() -> None:
+    metadata: ModelMetadata = {
+        "mode": "responses",
+        "input_cost_per_token": INPUT_RATE,
+        "output_cost_per_token": OUTPUT_RATE,
+    }
+    with patch("orchestrator.pricing.litellm.get_model_info", return_value=metadata) as loader:
+        profile = derive_pricing_profiles(("github_copilot/gpt-5.5",))["github_copilot/gpt-5.5"]
+
+    assert profile.input_usd_per_token == INPUT_RATE
+    assert profile.output_usd_per_token == OUTPUT_RATE
+    loader.assert_called_once_with("gpt-5.5")
 
 
 def test_profile_ignores_null_optional_rates() -> None:
