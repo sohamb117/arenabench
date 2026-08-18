@@ -29,6 +29,7 @@ class LlmCallResult:
     cost_usd: float | None
     latency_s: float
     error: str | None
+    attempt: int = 0
     parse_ok: bool = True
 
 
@@ -37,11 +38,12 @@ class LlmCallError(ArenaError):
 
 
 class _Message(Protocol):
-    content: str
+    content: str | None
 
 
 class _Choice(Protocol):
     message: _Message
+    finish_reason: str | None
 
 
 class _Usage(Protocol):
@@ -111,6 +113,7 @@ def call(
             cost_usd=0.0,
             latency_s=elapsed_s(started),
             error=None,
+            attempt=0,
         )
     completion = cast(_LiteLlmCompletion, litellm.completion)
     last_retryable: Exception | None = None
@@ -123,42 +126,36 @@ def call(
         if on_attempt is not None:
             on_attempt(attempt)
         try:
-            if api_key is None:
-                raw_response = completion(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    timeout=timeout_s,
-                    num_retries=0,
-                    fallbacks=fallbacks or None,
-                    drop_params=True,
-                    max_tokens=max_tokens,
-                    reasoning_effort=reasoning_effort,
-                )
-            else:
-                raw_response = completion(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    timeout=timeout_s,
-                    num_retries=0,
-                    fallbacks=fallbacks or None,
-                    drop_params=True,
-                    max_tokens=max_tokens,
-                    reasoning_effort=reasoning_effort,
-                    api_key=api_key,
-                )
+            raw_response = completion(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                timeout=timeout_s,
+                num_retries=0,
+                fallbacks=fallbacks or None,
+                drop_params=True,
+                max_tokens=max_tokens,
+                reasoning_effort=reasoning_effort,
+                api_key=api_key,
+            )
             response = cast(_CompletionResponse, raw_response)
+            content = response.choices[0].message.content
+            if content is None:
+                finish_reason = response.choices[0].finish_reason or "unknown"
+                raise LlmCallError(f"provider returned no text: finish_reason={finish_reason}")
             return LlmCallResult(
-                content=response.choices[0].message.content,
+                content=content,
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
                 total_tokens=response.usage.total_tokens,
                 cost_usd=_completion_cost(response),
                 latency_s=elapsed_s(started),
                 error=None,
+                attempt=attempt,
             )
         except Exception as exc:
+            if isinstance(exc, LlmCallError):
+                raise
             if _is_fatal(exc):
                 raise LlmCallError(str(exc)) from exc
             if not _is_retryable(exc):
@@ -173,6 +170,7 @@ def call(
         cost_usd=None,
         latency_s=elapsed_s(started),
         error=str(last_retryable) if last_retryable is not None else "llm call failed",
+        attempt=total_attempts - 1,
         parse_ok=False,
     )
 

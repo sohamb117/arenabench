@@ -29,12 +29,13 @@ MESSAGES: list[dict[str, str]] = [{"role": "user", "content": "hello"}]
 
 @dataclass(frozen=True, slots=True)
 class FakeMessage:
-    content: str
+    content: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class FakeChoice:
     message: FakeMessage
+    finish_reason: str | None = "stop"
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,9 +51,11 @@ class FakeResponse:
     usage: FakeUsage
 
 
-def make_response(content: str = CONTENT) -> FakeResponse:
+def make_response(
+    content: str | None = CONTENT, finish_reason: str | None = "stop"
+) -> FakeResponse:
     return FakeResponse(
-        choices=[FakeChoice(message=FakeMessage(content=content))],
+        choices=[FakeChoice(message=FakeMessage(content=content), finish_reason=finish_reason)],
         usage=FakeUsage(
             prompt_tokens=PROMPT_TOKENS,
             completion_tokens=COMPLETION_TOKENS,

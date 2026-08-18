@@ -53,6 +53,7 @@ def test_call_returns_usage_cost_and_content_when_litellm_succeeds() -> None:
         cost_usd=COST_USD,
         latency_s=result.latency_s,
         error=None,
+        attempt=0,
         parse_ok=True,
     )
     completion.assert_called_once_with(
@@ -65,6 +66,7 @@ def test_call_returns_usage_cost_and_content_when_litellm_succeeds() -> None:
         drop_params=True,
         max_tokens=MAX_TOKENS,
         reasoning_effort=None,
+        api_key=None,
     )
 
 
@@ -193,3 +195,12 @@ def test_call_raises_llm_call_error_for_bad_request_error() -> None:
         _call()
 
     assert "bad request" in str(exc.value)
+
+
+def test_call_raises_llm_call_error_when_provider_returns_no_text() -> None:
+    response = make_response(content=None, finish_reason="content_filter")
+    with (
+        patch("harness.llm.litellm.completion", return_value=response),
+        pytest.raises(LlmCallError, match="finish_reason=content_filter"),
+    ):
+        _call()
