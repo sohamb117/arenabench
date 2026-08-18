@@ -96,6 +96,7 @@ def drive_match(
             ssh_host="127.0.0.1",
             ssh_port=_SSH_HOST_PORT,
             key_path=key_path,
+            log_dir=logger.match_dir,
         )
         vm.create_overlay()
         vm.start()

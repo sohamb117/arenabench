@@ -43,6 +43,7 @@ def build_transport_configs(
     key_path: Path | None = None,
     probe_user: str = "root",
     connect_timeout_s: float = 30.0,
+    log_dir: Path | None = None,
 ) -> dict[int, SshConfig]:
     """Build the per-port SshConfig dict the SshOrchestratorServer will multiplex.
 
@@ -57,6 +58,9 @@ def build_transport_configs(
             user=agent.user,
             key_path=key_path,
             connect_timeout_s=connect_timeout_s,
+            stderr_path=(log_dir / "agents" / f"{agent.slot:02d}" / "stderr.log")
+            if log_dir is not None
+            else None,
         )
     configs[PROBE_PORT] = SshConfig(
         host=ssh_host,
@@ -84,6 +88,7 @@ class SshOrchestratorServer:
         key_path: Path | None = None,
         probe_user: str = "root",
         connect_timeout_s: float = 30.0,
+        log_dir: Path | None = None,
     ) -> None:
         configs = build_transport_configs(
             agents=agents,
@@ -92,6 +97,7 @@ class SshOrchestratorServer:
             key_path=key_path,
             probe_user=probe_user,
             connect_timeout_s=connect_timeout_s,
+            log_dir=log_dir,
         )
         self._transports: dict[int, SshTransport] = {
             port: SshTransport(cfg) for port, cfg in configs.items()

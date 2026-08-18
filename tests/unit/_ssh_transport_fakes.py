@@ -69,6 +69,7 @@ def patch_popen(
         captured.extend(argv)
         assert kwargs["stdin"] is not None
         assert kwargs["stdout"] is not None
+        assert "stderr" in kwargs
         assert kwargs["text"] is False
         assert kwargs["bufsize"] == 0
         return process

@@ -113,6 +113,19 @@ def test_key_path_propagates_to_all_transports() -> None:
         assert cfg.key_path == key
 
 
+def test_agent_stderr_paths_are_scoped_by_slot(tmp_path: Path) -> None:
+    configs = build_transport_configs(
+        agents=_agents(2),
+        ssh_host=SSH_HOST,
+        ssh_port=SSH_PORT,
+        log_dir=tmp_path,
+    )
+
+    assert configs[slot_to_port(0)].stderr_path == tmp_path / "agents" / "00" / "stderr.log"
+    assert configs[slot_to_port(1)].stderr_path == tmp_path / "agents" / "01" / "stderr.log"
+    assert configs[PROBE_PORT].stderr_path is None
+
+
 @pytest.mark.e2e
 def test_real_ssh_round_trip_via_localhost() -> None:
     if not os.environ.get("ARENABENCH_E2E"):

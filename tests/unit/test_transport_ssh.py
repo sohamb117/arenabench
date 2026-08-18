@@ -11,6 +11,7 @@ from harness.transport_ssh import SshConfig, SshTransport
 from tests.unit._ssh_transport_fakes import FakeSshProcess, patch_popen
 
 TS = datetime(2026, 6, 29, 0, 0, tzinfo=UTC)
+PRIVATE_FILE_MODE = 0o600
 
 
 def _env(seq: int = 1) -> Envelope:
@@ -192,6 +193,21 @@ def test_open_raises_when_ssh_exits_immediately(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(TransportError, match="ssh exited immediately with rc=255"):
         SshTransport(SshConfig(host="127.0.0.1", port=22222, user="agent0")).open()
+
+
+def test_stderr_log_is_private_and_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    process = FakeSshProcess()
+    _ = patch_popen(monkeypatch, process)
+    path = tmp_path / "agents" / "00" / "stderr.log"
+    transport = SshTransport(
+        SshConfig(host="127.0.0.1", port=22222, user="agent0", stderr_path=path)
+    )
+
+    transport.open()
+    assert path.stat().st_mode & 0o777 == PRIVATE_FILE_MODE
+    transport.close()
+
+    assert transport.is_open() is False
 
 
 _ = os

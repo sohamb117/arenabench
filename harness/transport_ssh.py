@@ -26,6 +26,7 @@ class SshConfig:
     connect_timeout_s: float = 10.0
     keepalive_interval_s: float = 30.0
     remote_command: tuple[str, ...] | None = None
+    stderr_path: Path | None = None
 
 
 class SshTransport:
@@ -35,15 +36,23 @@ class SshTransport:
         self._cfg = cfg
         self._proc: subprocess.Popen[bytes] | None = None
         self._buffer = bytearray()
+        self._stderr: object | None = None
 
     def open(self) -> None:
         if self.is_open():
             return
         self._buffer.clear()
+        stderr = subprocess.DEVNULL
+        if self._cfg.stderr_path is not None:
+            self._cfg.stderr_path.parent.mkdir(parents=True, exist_ok=True)
+            self._stderr = self._cfg.stderr_path.open("ab", buffering=0)
+            self._cfg.stderr_path.chmod(0o600)
+            stderr = self._stderr
         self._proc = subprocess.Popen(
             self._argv(),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            stderr=stderr,
             text=False,
             bufsize=0,
         )
@@ -110,6 +119,11 @@ class SshTransport:
                 pipe.close()
         self._proc = None
         self._buffer.clear()
+        if self._stderr is not None:
+            close = getattr(self._stderr, "close", None)
+            if callable(close):
+                close()
+            self._stderr = None
 
     def __enter__(self) -> SshTransport:
         self.open()
