@@ -1,0 +1,12 @@
+{
+  "model": "github_copilot/gpt-5.6-sol",
+  "temperature": 0.0,
+  "max_output_tokens": 1024,
+  "request_timeout_s": 60,
+  "num_retries": 3,
+  "fallbacks": null,
+  "reasoning_effort": "medium",
+  "parser": "json",
+  "api_key_env": null,
+  "system_prompt_path": "configs/prompts/process-control-authorized-multi.txt"
+}
