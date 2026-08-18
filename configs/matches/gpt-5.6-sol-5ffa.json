@@ -1,0 +1,39 @@
+{
+  "agents": [
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 0,
+      "user": "agent0"
+    },
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 1,
+      "user": "agent1"
+    },
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 2,
+      "user": "agent2"
+    },
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 3,
+      "user": "agent3"
+    },
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 4,
+      "user": "agent4"
+    }
+  ],
+  "archive_grace_s": 60,
+  "budget_usd": 990.0,
+  "cgroup_limits": null,
+  "grace_period_s": 30,
+  "heartbeat_interval_s": 120,
+  "match_id": "gpt-5-6-sol-5ffa",
+  "max_duration_s": 1800,
+  "n_agents": 5,
+  "network_policy": "allowlist",
+  "per_agent_budget_usd": 500.0
+}
