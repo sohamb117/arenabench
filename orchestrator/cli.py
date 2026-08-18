@@ -8,12 +8,15 @@ from pathlib import Path
 from typing import Annotated, Literal, cast
 
 import typer
+from pydantic import ValidationError
 
 from common.errors import ConfigError
 from orchestrator.match_config import MatchConfig, load_match_config
 from orchestrator.match_driver import drive_match
 from orchestrator.match_generator import build_match_config_dict
 from orchestrator.match_validation import check_referenced_files_exist
+from orchestrator.transcript import TranscriptError, TranscriptFormat, read_transcript
+from orchestrator.transcript_render import render_text
 
 app = typer.Typer(
     name="arenabench",
@@ -56,6 +59,32 @@ def replay(match_dir: Path) -> None:
     raw = summary_path.read_text(encoding="utf-8")
     summary = cast(object, json.loads(raw))
     typer.echo(json.dumps(summary, indent=2, sort_keys=True))
+
+
+@app.command(name="transcript")
+def transcript_command(
+    match_dir: Path,
+    agent: Annotated[int | None, typer.Option("--agent")] = None,
+    turn: Annotated[int | None, typer.Option("--turn")] = None,
+    output_format: Annotated[str, typer.Option("--format")] = "text",
+    legacy_run: Annotated[int | None, typer.Option("--legacy-run")] = None,
+) -> None:
+    try:
+        parsed_format = TranscriptFormat(output_format)
+        document = read_transcript(
+            match_dir,
+            agent=agent,
+            turn=turn,
+            legacy_run=legacy_run,
+        )
+    except (TranscriptError, ValidationError, ValueError) as exc:
+        typer.echo(f"ERROR {exc}", err=True)
+        raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
+    match parsed_format:
+        case TranscriptFormat.TEXT:
+            typer.echo(render_text(document), nl=False)
+        case TranscriptFormat.JSON:
+            typer.echo(document.model_dump_json(indent=2))
 
 
 @app.command(name="run")

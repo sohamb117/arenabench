@@ -63,7 +63,7 @@ GitHub Copilot (token-file auth, [`configs/agents/copilot-claude.json`](configs/
 
 ## CLI
 
-The `arenabench` console script has five subcommands:
+The `arenabench` console script has six subcommands:
 
 ```bash
 uv run arenabench --help
@@ -84,6 +84,11 @@ uv run arenabench run configs/matches/demo-1v1.json
 
 # pretty-print a finished match
 uv run arenabench replay logs/matches/demo-1v1/
+
+# inspect every agent turn and provider attempt
+uv run arenabench transcript logs/matches/demo-1v1/
+# Machine-readable output and filters:
+uv run arenabench transcript logs/matches/demo-1v1/ --agent 0 --turn 2 --format json
 
 # build the golden VM image
 uv run arenabench build-vm
@@ -186,7 +191,13 @@ logs/matches/<match_id>/
     01/ 02/ ...      # one dir per agent slot (zero-padded)
 ```
 
-`summary.json` is validated against [`orchestrator/schemas/summary.schema.json`](orchestrator/schemas/summary.schema.json) on every write. Pretty-print any finished match with `arenabench replay logs/matches/<id>/`.
+`summary.json` is validated against [`orchestrator/schemas/summary.schema.json`](orchestrator/schemas/summary.schema.json) on every write. Pretty-print any finished match with `arenabench replay logs/matches/<id>/`. Use `arenabench transcript logs/matches/<id>/` for a stable plain-text turn/attempt view, or add `--format json` for the versioned machine-readable document. Direct legacy directories with appended executions default to their latest detected epoch; select an older one with `--legacy-run N`.
+
+Exact logs include pre-call messages, raw replies or typed provider failures, parse status,
+bash requests/results, usage, latency, provider cost, and reserved spend. Older logs explicitly
+print `[context unavailable: legacy log]` or
+`[provider outcome unavailable: legacy log]` when evidence was never recorded; absence is never
+reported as a provider refusal or content filter.
 
 Match logs are sensitive. `context.jsonl` preserves the exact message list sent to
 LiteLLM and can therefore contain secrets discovered by an agent during a match, even

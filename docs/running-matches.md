@@ -162,7 +162,7 @@ timeout/no-winner outcome with alive slots and elapsed duration.
 
 ---
 
-## 7. Inspect logs and replay
+## 7. Inspect logs, transcripts, and replay
 
 After a match the log directory is at `logs/matches/<match_id>/`:
 
@@ -199,6 +199,33 @@ uv run arenabench replay logs/matches/demo-1v1/
 
 `replay` prints the contents of `summary.json` with `json.dumps(…, indent=2, sort_keys=True)`.
 The same direct-path command works for an archived run by passing its archive directory.
+
+Render the complete turn-by-turn record:
+
+```bash
+uv run arenabench transcript logs/matches/demo-1v1/
+uv run arenabench transcript logs/matches/demo-1v1/ --agent 0 --turn 2
+uv run arenabench transcript logs/matches/demo-1v1/ --format json
+```
+
+Text output is ANSI-free and follows stable `RUN`, `AGENT`, `TURN`, `ATTEMPT`, `CONTEXT`,
+`REPLY`/`FAILURE`, `PARSE`, `COMMAND`/`RESULT`, `USAGE`, `LATENCY`, `COST`, and `RESERVED`
+sections. JSON output is a versioned typed document and preserves logged message, reply, command,
+and terminal-output strings exactly.
+
+Directories produced by current ArenaBench versions contain one isolated execution and a
+`run.json` manifest. The command also accepts the old direct layout whose JSONL files may contain
+multiple appended executions. For that layout it detects epochs from `IDLE -> VM_BOOTING` events
+in `match.jsonl`, uses the latest by default, and never combines records across epochs. Select an
+older zero-based epoch explicitly:
+
+```bash
+uv run arenabench transcript logs/matches/legacy-match/ --legacy-run 0
+```
+
+Legacy files may predate exact context and provider-failure frames. Missing evidence is printed as
+`[context unavailable: legacy log]` or `[provider outcome unavailable: legacy log]`; the reader
+does not infer a refusal, `content_filter`, or any other provider outcome.
 
 Treat the entire match directory as sensitive. Exact context snapshots can include
 credentials or other secrets that an agent discovered and placed in its conversation;
