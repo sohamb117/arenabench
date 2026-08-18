@@ -187,9 +187,17 @@ logs/matches/demo-1v1/
 
 `logs/matches/<match_id>/` always contains exactly the latest execution. Each run has a
 sortable `run_id` made from its UTC start timestamp plus a random suffix. Before a
-repeated match starts, ArenaBench moves the prior directory intact to
-`logs/archive/<match_id>/<run_id>/`; it never merges or appends JSONL across runs. An
-archive-name collision aborts the new run without moving the current directory.
+repeated match starts, ArenaBench moves the prior directory intact to the matching
+archive location:
+
+- valid `run.json`: `logs/archive/<match_id>/<run_id>/`
+- no `run.json`: `logs/archive/<match_id>/legacy-<sortable-id>/`
+- invalid or truncated `run.json`: `logs/archive/<match_id>/corrupt-<sortable-id>/`
+
+Legacy and corrupt directories are quarantined byte-for-byte; ArenaBench does not add or
+repair metadata in them. It never merges or appends JSONL across runs. Archive destination
+ownership is exclusive, so even an empty collision aborts the new run without moving the
+current directory.
 
 Pretty-print the outcome:
 
@@ -214,10 +222,11 @@ sections. JSON output is a versioned typed document and preserves logged message
 and terminal-output strings exactly.
 
 Directories produced by current ArenaBench versions contain one isolated execution and a
-`run.json` manifest. The command also accepts the old direct layout whose JSONL files may contain
-multiple appended executions. For that layout it detects epochs from `IDLE -> VM_BOOTING` events
-in `match.jsonl`, uses the latest by default, and never combines records across epochs. Select an
-older zero-based epoch explicitly:
+`run.json` manifest. The command also accepts the old direct layout and archived
+`legacy-<sortable-id>` directories whose JSONL files may contain multiple appended executions.
+For that layout it detects epochs from `IDLE -> VM_BOOTING` events in `match.jsonl`, uses the
+latest by default, and never combines records across epochs. Select an older zero-based epoch
+explicitly:
 
 ```bash
 uv run arenabench transcript logs/matches/legacy-match/ --legacy-run 0
@@ -230,8 +239,11 @@ does not infer a refusal, `content_filter`, or any other provider outcome.
 Treat the entire match directory as sensitive. Exact context snapshots can include
 credentials or other secrets that an agent discovered and placed in its conversation;
 ArenaBench does not add configured API keys, provider headers, or request configuration
-to those frames. New log directories use mode `0700` and files use `0600` on POSIX
-platforms. Preserve equivalent restrictions when copying or archiving a match.
+to those frames. ArenaBench-owned directories beneath the log root use mode `0700` and files use
+`0600` on POSIX platforms. A pre-existing caller-owned `--log-root` keeps its existing mode;
+ArenaBench rejects a symlink or non-directory but does not silently repair insecure permissions.
+Because logs beneath it are private, operators must restrict the root itself appropriately.
+Preserve equivalent restrictions when copying or archiving a match.
 
 ---
 

@@ -207,3 +207,34 @@ merging, overwriting, or appending logs. The current directory remains at
 **Fix:** Inspect both directories and resolve the duplicate outside ArenaBench while
 preserving owner-only access. Do not combine their JSONL files; each directory is one
 execution identified by its `run.json` manifest.
+
+---
+
+## A repeated match quarantined an old log directory
+
+**Symptom:** Before a fresh run starts, the prior directory appears under
+`logs/archive/<match-id>/legacy-<sortable-id>/` or
+`logs/archive/<match-id>/corrupt-<sortable-id>/`.
+
+**Cause:** `legacy-*` means the prior directory had no `run.json`; `corrupt-*` means the
+manifest existed but could not be parsed or validated. ArenaBench quarantines either directory
+unchanged instead of fabricating metadata or repeatedly blocking the match ID. Archived legacy
+logs remain readable with `arenabench transcript <archive-path>` and `--legacy-run N`.
+
+**Action:** Preserve the quarantine as evidence. Do not add a manifest to `legacy-*` or repair
+`corrupt-*` in place. A corrupt manifest is intentionally not trusted for run identity or agent
+count.
+
+---
+
+## Existing log root permissions were not changed
+
+**Symptom:** A caller-created `--log-root` retains its original mode after a run.
+
+**Cause:** ArenaBench owns and restricts `matches/`, `archive/`, run, agent, and log-file paths,
+but it does not chmod a pre-existing caller-owned root. Symlink and non-directory roots are
+rejected.
+
+**Fix:** Restrict the root using the host's access-control tools (for example, `chmod 700`) before
+running. Match logs can contain sensitive exact model context even though owned children are
+created with private POSIX modes.

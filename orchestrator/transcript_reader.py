@@ -35,6 +35,7 @@ from orchestrator.transcript_jsonl import epoch_lines, read_jsonl
 
 _AGENT_NAME_WIDTH: Final = 2
 _AGENT_FILES: Final = ("context.jsonl", "api.jsonl", "bash.jsonl", "events.jsonl")
+_ARCHIVED_LEGACY_PREFIX: Final = "legacy-"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +71,14 @@ class TranscriptReader:
         if self._filters.turn is not None and not any(agent.turns for agent in agents):
             raise TranscriptError(f"turn {self._filters.turn} not found")
         if manifest is None:
+            match_id = (
+                self._path.parent.name
+                if self._path.parent.parent.name == "archive"
+                and self._path.name.startswith(_ARCHIVED_LEGACY_PREFIX)
+                else self._path.name
+            )
             run = RunInfo(
-                match_id=self._path.name,
+                match_id=match_id,
                 legacy=True,
                 legacy_run=epoch.index,
                 legacy_run_count=epoch.count,
