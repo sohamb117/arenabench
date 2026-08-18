@@ -24,6 +24,10 @@ class _SummaryShape(BaseModel):
     transport_used: Literal["vsock", "ssh"] | None = None
     cid: Annotated[int, Field(ge=0)] | None = None
     winner_pid: Annotated[int, Field(ge=1)] | None = None
+    estimated_spend_usd: Annotated[float, Field(ge=0.0)]
+    estimated_spend_by_agent_usd: dict[str, Annotated[float, Field(ge=0.0)]]
+    budget_usd: Annotated[float, Field(gt=0.0)] | None
+    per_agent_budget_usd: Annotated[float, Field(gt=0.0)] | None
 
 
 def test_schema_file_exists_and_is_valid_json() -> None:
@@ -33,12 +37,22 @@ def test_schema_file_exists_and_is_valid_json() -> None:
 
 
 def test_match_outcome_pydantic_model_round_trips() -> None:
-    out = MatchOutcome(result="victory", winner=0, cause="opponent_crashed", final_state="DONE")
+    out = MatchOutcome(
+        result="victory",
+        winner=0,
+        cause="opponent_crashed",
+        final_state="DONE",
+        estimated_spend_usd=0.5,
+        estimated_spend_by_agent_usd={"0": 0.25, "1": 0.25},
+        budget_usd=1.0,
+        per_agent_budget_usd=None,
+    )
     dumped = out.model_dump()
     rebuilt = _SummaryShape.model_validate(dumped)
     assert rebuilt.result == "victory"
     assert rebuilt.winner == 0
     assert rebuilt.cause == "opponent_crashed"
+    assert rebuilt.estimated_spend_by_agent_usd == {"0": 0.25, "1": 0.25}
 
 
 def test_summary_shape_rejects_unknown_result() -> None:
@@ -57,7 +71,16 @@ def test_summary_shape_rejects_non_done_final_state() -> None:
 
 def test_summary_shape_accepts_null_winner_for_draw_and_timeout() -> None:
     _SummaryShape.model_validate(
-        {"result": "draw", "winner": None, "cause": "mutual_destruction", "final_state": "DONE"}
+        {
+            "result": "draw",
+            "winner": None,
+            "cause": "mutual_destruction",
+            "final_state": "DONE",
+            "estimated_spend_usd": 0.0,
+            "estimated_spend_by_agent_usd": {"0": 0.0, "1": 0.0},
+            "budget_usd": None,
+            "per_agent_budget_usd": None,
+        }
     )
     _SummaryShape.model_validate(
         {
@@ -65,6 +88,10 @@ def test_summary_shape_accepts_null_winner_for_draw_and_timeout() -> None:
             "winner": None,
             "cause": "max_duration_exceeded",
             "final_state": "DONE",
+            "estimated_spend_usd": 0.0,
+            "estimated_spend_by_agent_usd": {"0": 0.0, "1": 0.0},
+            "budget_usd": None,
+            "per_agent_budget_usd": None,
         }
     )
 

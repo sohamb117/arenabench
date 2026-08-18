@@ -5,7 +5,16 @@
   "description": "Per-match summary.json produced by orchestrator.lifecycle.run_match",
   "type": "object",
   "additionalProperties": false,
-  "required": ["result", "winner", "cause", "final_state"],
+  "required": [
+    "result",
+    "winner",
+    "cause",
+    "final_state",
+    "estimated_spend_usd",
+    "estimated_spend_by_agent_usd",
+    "budget_usd",
+    "per_agent_budget_usd"
+  ],
   "properties": {
     "result": {
       "type": "string",
@@ -60,6 +69,29 @@
         { "type": "null" }
       ],
       "description": "Plan §9 S1 binary observable: surviving harness PID inside the guest at terminal state. Null for non-victory outcomes."
+    },
+    "estimated_spend_usd": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Conservative managed-call exposure in USD for this run."
+    },
+    "estimated_spend_by_agent_usd": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": { "type": "number", "minimum": 0 },
+      "description": "Conservative managed-call exposure in USD, complete by agent slot."
+    },
+    "budget_usd": {
+      "anyOf": [
+        { "type": "number", "exclusiveMinimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "per_agent_budget_usd": {
+      "anyOf": [
+        { "type": "number", "exclusiveMinimum": 0 },
+        { "type": "null" }
+      ]
     }
   }
 }

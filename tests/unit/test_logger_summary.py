@@ -32,14 +32,25 @@ def test_write_summary_overwrites_sorted_json(tmp_path: Path) -> None:
             "winner": SUMMARY_WINNER,
             "cause": SUMMARY_CAUSE,
             "final_state": SUMMARY_FINAL_STATE,
+            "estimated_spend_usd": 0.0,
+            "estimated_spend_by_agent_usd": {"0": 0.0, "1": 0.0},
+            "budget_usd": None,
+            "per_agent_budget_usd": None,
         }
     )
 
     summary_text = (logger.match_dir / "summary.json").read_text(encoding="utf-8")
     assert summary_text == (
         "{\n"
+        '  "budget_usd": null,\n'
         f'  "cause": "{SUMMARY_CAUSE}",\n'
+        '  "estimated_spend_by_agent_usd": {\n'
+        '    "0": 0.0,\n'
+        '    "1": 0.0\n'
+        "  },\n"
+        '  "estimated_spend_usd": 0.0,\n'
         f'  "final_state": "{SUMMARY_FINAL_STATE}",\n'
+        '  "per_agent_budget_usd": null,\n'
         f'  "result": "{SUMMARY_RESULT}",\n'
         f'  "winner": {SUMMARY_WINNER}\n'
         "}"

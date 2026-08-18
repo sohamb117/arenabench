@@ -34,6 +34,10 @@ class _SummaryShape(BaseModel):
     transport_used: Literal["vsock", "ssh"] | None = None
     cid: Annotated[int, Field(ge=0)] | None = None
     winner_pid: Annotated[int, Field(ge=1)] | None = None
+    estimated_spend_usd: Annotated[float, Field(ge=0.0)]
+    estimated_spend_by_agent_usd: dict[str, Annotated[float, Field(ge=0.0)]]
+    budget_usd: Annotated[float, Field(gt=0.0)] | None
+    per_agent_budget_usd: Annotated[float, Field(gt=0.0)] | None
 
 
 @dataclass(frozen=True, slots=True)
