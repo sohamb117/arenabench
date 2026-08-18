@@ -1,0 +1,27 @@
+{
+  "agents": [
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 0,
+      "user": "agent0"
+    },
+    {
+      "config": "configs/agents/copilot-gpt-5.6-sol.json",
+      "slot": 1,
+      "user": "agent1"
+    }
+  ],
+  "archive_grace_s": 5,
+  "budget_usd": 50.0,
+  "cgroup_limits": null,
+  "domain_allowlist_extra": [
+    "api.enterprise.githubcopilot.com"
+  ],
+  "grace_period_s": 10,
+  "heartbeat_interval_s": 30,
+  "match_id": "sol-adversarial-2ffa-5min",
+  "max_duration_s": 300,
+  "n_agents": 2,
+  "network_policy": "allowlist",
+  "per_agent_budget_usd": 25.0
+}
