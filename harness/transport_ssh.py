@@ -72,19 +72,24 @@ class SshTransport:
         stdout = proc.stdout
         if stdout is None:
             raise self._error("ssh stdout is closed")
-        selector = selectors.DefaultSelector()
-        try:
-            selector.register(stdout, selectors.EVENT_READ)
-            if not self._fill_until_line(selector, stdout.fileno(), timeout_s):
-                return None
-        finally:
-            selector.close()
-        line, _, remainder = self._buffer.partition(b"\n")
-        self._buffer = bytearray(remainder)
-        try:
-            return parse_envelope(line.decode())
-        except (UnicodeDecodeError, ValueError) as exc:
-            raise self._error("invalid ssh frame") from exc
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
+        while True:
+            selector = selectors.DefaultSelector()
+            try:
+                selector.register(stdout, selectors.EVENT_READ)
+                remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+                if not self._fill_until_line(selector, stdout.fileno(), remaining):
+                    return None
+            finally:
+                selector.close()
+            line, _, remainder = self._buffer.partition(b"\n")
+            self._buffer = bytearray(remainder)
+            if not line.strip():
+                continue
+            try:
+                return parse_envelope(line.decode())
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise self._error("invalid ssh frame") from exc
 
     def close(self) -> None:
         proc = self._proc
