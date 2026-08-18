@@ -182,11 +182,18 @@ logs/matches/<match_id>/
       events.jsonl  # harness_exit, turn_summary
       bash.jsonl    # pid_announce, bash_request, bash_result
       api.jsonl     # llm_request, llm_response, heartbeat_injected
-      context.jsonl # chat dumps for post-mortem
+      context.jsonl # exact per-attempt messages and fatal provider outcomes
     01/ 02/ ...      # one dir per agent slot (zero-padded)
 ```
 
 `summary.json` is validated against [`orchestrator/schemas/summary.schema.json`](orchestrator/schemas/summary.schema.json) on every write. Pretty-print any finished match with `arenabench replay logs/matches/<id>/`.
+
+Match logs are sensitive. `context.jsonl` preserves the exact message list sent to
+LiteLLM and can therefore contain secrets discovered by an agent during a match, even
+though ArenaBench never adds credentials, provider headers, or request configuration to
+these frames. Newly created log directories and files are restricted to the owner
+(`0700` directories and `0600` files) where the platform supports POSIX modes. Protect
+copied or archived logs with equivalent access controls.
 
 ## Architecture
 

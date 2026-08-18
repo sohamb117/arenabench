@@ -14,7 +14,7 @@ from common import protocol as proto
 from common.clock import now_utc
 from common.errors import TransportError
 from harness import _loop_helpers as helpers
-from harness import config, heartbeat, llm, parser, shell
+from harness import attempt_logging, config, heartbeat, llm, parser, shell
 from harness.chat import Chat
 from harness.transport import Transport
 
@@ -42,17 +42,17 @@ class _State:
     budget_enabled: bool = False
 
     def emit(self, data: proto.Frame) -> None:
-        self.transport.send(
-            proto.Envelope(
-                v=1,
-                ts=now_utc(),
-                seq=self.seq,
-                src=self.src,
-                dst="orchestrator",
-                kind=data.kind,
-                data=data,
-            )
+        envelope = proto.Envelope(
+            v=1,
+            ts=now_utc(),
+            seq=self.seq,
+            src=self.src,
+            dst="orchestrator",
+            kind=data.kind,
+            data=data,
         )
+        proto.serialize_envelope(envelope)
+        self.transport.send(envelope)
         self.seq += 1
 
     def exit(
@@ -86,7 +86,7 @@ def run_harness(
                 if code is not None:
                     return code
                 parsed = _llm_turn(state, chat, tmux, cfg, api_key)
-                if _finish_turn(state, chat, parsed):
+                if helpers.finish_turn(state, chat, parsed):
                     state.exit("clean", 0)
                     return 0
         state.exit("clean", 0)
@@ -94,7 +94,7 @@ def run_harness(
     except _ShutdownRequested:
         return 0
     except llm.LlmCallError:
-        _LOG.exception("harness loop hit fatal LLM error")
+        _LOG.error("harness loop hit fatal LLM error")
         state.exit("llm_fatal", 1)
         return 1
     except Exception:
@@ -196,8 +196,12 @@ def _llm_turn(
     prompt_chars = sum(len(message["content"]) for message in messages)
     last_excerpt = _last_user_excerpt(messages)
     prompt_tokens = chat.prompt_tokens
+    current_attempt = 0
 
     def _emit_attempt(attempt: int) -> None:
+        nonlocal current_attempt
+        current_attempt = attempt
+        identity = attempt_logging.AttemptIdentity(state.turn, request_id, attempt)
         # Plan §9 S16: one llm_request per attempt (same request_id), so a
         # retry on 429 / 5xx / timeout is visible in api.jsonl as two frames
         # for the same turn rather than being collapsed inside the harness.
@@ -216,36 +220,50 @@ def _llm_turn(
                 fallback_models=cfg.fallbacks,
             )
         )
-        if not state.budget_enabled:
-            return
-        deadline = time.monotonic() + _RESERVATION_TIMEOUT_S
-        while True:
-            decision_env = state.transport.recv(timeout_s=max(0.0, deadline - time.monotonic()))
-            if decision_env is None:
-                raise llm.LlmCallError("reservation decision timeout or channel close")
-            decision = decision_env.data
-            if isinstance(decision, proto.LlmReservationDecision):
-                break
-            if _handle_inbound(decision_env, chat, state) is not None:
-                raise _ShutdownRequested
-        if decision.request_id != request_id or decision.attempt != attempt:
-            raise llm.LlmCallError("reservation decision correlation mismatch")
-        if not decision.granted:
-            raise llm.LlmCallError(f"reservation denied: {decision.reason}")
+        if state.budget_enabled:
+            deadline = time.monotonic() + _RESERVATION_TIMEOUT_S
+            while True:
+                decision_env = state.transport.recv(timeout_s=max(0.0, deadline - time.monotonic()))
+                if decision_env is None:
+                    raise attempt_logging.reservation_error(
+                        identity, "reservation decision timeout or channel close"
+                    )
+                decision = decision_env.data
+                if isinstance(decision, proto.LlmReservationDecision):
+                    break
+                if _handle_inbound(decision_env, chat, state) is not None:
+                    raise _ShutdownRequested
+            if decision.request_id != request_id or decision.attempt != attempt:
+                raise attempt_logging.reservation_error(
+                    identity, "reservation decision correlation mismatch"
+                )
+            if not decision.granted:
+                raise attempt_logging.reservation_error(
+                    identity, f"reservation denied: {decision.reason}"
+                )
+        try:
+            state.emit(attempt_logging.context_snapshot(identity, messages))
+        except ValueError as exc:
+            raise attempt_logging.context_too_large(identity) from exc
 
-    result = llm.call(
-        model=cfg.model,
-        messages=messages,
-        temperature=cfg.temperature,
-        max_tokens=cfg.max_tokens,
-        timeout_s=float(cfg.request_timeout_s),
-        num_retries=cfg.num_retries,
-        fallbacks=cfg.fallbacks,
-        reasoning_effort=cfg.reasoning_effort,
-        api_key=api_key,
-        mock_response=cfg.mock_response,
-        on_attempt=_emit_attempt,
-    )
+    try:
+        result = llm.call(
+            model=cfg.model,
+            messages=messages,
+            temperature=cfg.temperature,
+            max_tokens=cfg.max_tokens,
+            timeout_s=float(cfg.request_timeout_s),
+            num_retries=cfg.num_retries,
+            fallbacks=cfg.fallbacks,
+            reasoning_effort=cfg.reasoning_effort,
+            api_key=api_key,
+            mock_response=cfg.mock_response,
+            on_attempt=_emit_attempt,
+        )
+    except llm.LlmCallError as exc:
+        identity = attempt_logging.AttemptIdentity(state.turn, request_id, current_attempt)
+        state.emit(attempt_logging.failure_frame(identity, exc))
+        raise
     parsed = helpers.parse_or_record_error(
         result, cfg.parser, state.turn, request_id, state.emit, chat
     )
@@ -254,24 +272,3 @@ def _llm_turn(
     chat.append_assistant(result.content)
     helpers.run_commands(parsed, state.turn, chat, tmux, state.emit, _ID_BYTES)
     return parsed
-
-
-def _finish_turn(state: _State, chat: Chat, parsed: parser.ParsedResponse | None) -> bool:
-    summarized = chat.should_summarize()
-    state.emit(
-        proto.TurnSummary(
-            turn=state.turn,
-            action_count=len(parsed.commands) if parsed is not None else 0,
-            free_tokens=chat.free_tokens,
-            summarized=summarized,
-            history_chars=sum(len(message.content) for message in chat.history),
-        )
-    )
-    complete = parsed is not None and parsed.task_complete
-    if complete and state.pending_complete:
-        return True
-    state.pending_complete = complete
-    if summarized:
-        chat.summarize(f"[context summarized at turn {state.turn}]")
-    state.turn += 1
-    return False

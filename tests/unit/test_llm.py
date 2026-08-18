@@ -23,6 +23,8 @@ from tests.unit._llm_fixtures import (
     make_response,
 )
 
+FILTERED_PROMPT_TOKENS = 211
+
 
 def _call(api_key: str | None = None) -> LlmCallResult:
     return call(
@@ -198,9 +200,55 @@ def test_call_raises_llm_call_error_for_bad_request_error() -> None:
 
 
 def test_call_raises_llm_call_error_when_provider_returns_no_text() -> None:
-    response = make_response(content=None, finish_reason="content_filter")
+    response = make_response(
+        content=None,
+        finish_reason="content_filter",
+        prompt_tokens=FILTERED_PROMPT_TOKENS,
+        completion_tokens=0,
+        total_tokens=FILTERED_PROMPT_TOKENS,
+    )
     with (
         patch("harness.llm.litellm.completion", return_value=response),
-        pytest.raises(LlmCallError, match="finish_reason=content_filter"),
+        pytest.raises(LlmCallError, match="finish_reason=content_filter") as exc,
     ):
         _call()
+
+    assert exc.value.category == "provider_refusal"
+    assert exc.value.finish_reason == "content_filter"
+    assert exc.value.prompt_tokens == FILTERED_PROMPT_TOKENS
+    assert exc.value.completion_tokens == 0
+    assert exc.value.total_tokens == FILTERED_PROMPT_TOKENS
+    assert exc.value.attempt == 0
+    assert exc.value.latency_s is not None
+
+
+def test_call_wraps_generic_provider_exception_with_safe_metadata() -> None:
+    provider_error = RuntimeError("upstream unavailable")
+
+    with (
+        patch("harness.llm.litellm.completion", side_effect=provider_error),
+        pytest.raises(LlmCallError, match="upstream unavailable") as exc,
+    ):
+        _call()
+
+    assert exc.value.category == "provider_error"
+    assert exc.value.error_class == "RuntimeError"
+    assert exc.value.status_code is None
+    assert exc.value.attempt == 0
+    assert exc.value.error_text == "upstream unavailable"
+
+
+def test_call_redacts_credentials_from_provider_exception_text() -> None:
+    provider_error = RuntimeError(
+        "Authorization: Bearer credential-must-not-appear api_key=other-secret"
+    )
+
+    with (
+        patch("harness.llm.litellm.completion", side_effect=provider_error),
+        pytest.raises(LlmCallError) as exc,
+    ):
+        _call()
+
+    assert "credential-must-not-appear" not in exc.value.error_text
+    assert "other-secret" not in exc.value.error_text
+    assert "[REDACTED]" in exc.value.error_text

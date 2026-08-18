@@ -85,9 +85,11 @@ def make_response(*, command: str | None = None, task_complete: bool = False) ->
     )
 
 
-def write_config(tmp_path: Path, *, max_tokens: int = 10_000) -> Path:
+def write_config(
+    tmp_path: Path, *, max_tokens: int = 10_000, system_prompt: str = "system prompt"
+) -> Path:
     prompt = tmp_path / "system.txt"
-    prompt.write_text("system prompt", encoding="utf-8")
+    prompt.write_text(system_prompt, encoding="utf-8")
     config = tmp_path / "agent.json"
     config.write_text(
         json.dumps(
@@ -117,11 +119,15 @@ def run_harness_thread(
     max_tokens: int = 10_000,
     budget_enabled: bool = False,
     send_capability: bool = True,
+    attempts_per_call: Sequence[Sequence[int]] | None = None,
+    initial_template: str = "initial task",
+    system_prompt: str = "system prompt",
 ) -> HarnessRun:
     transport = InMemoryTransport()
     result: dict[str, RunResult] = {}
     captured_messages: list[list[dict[str, str]]] = []
     calls = iter(responses)
+    attempt_plans = iter(attempts_per_call) if attempts_per_call is not None else None
     peer = transport.peer()
     if send_capability:
         send(peer, BudgetCapability(version=1, enabled=budget_enabled))
@@ -129,7 +135,9 @@ def run_harness_thread(
     def fake_call(**kwargs: object) -> LlmCallResult:
         on_attempt = kwargs.get("on_attempt")
         if on_attempt is not None:
-            cast(Callable[[int], None], on_attempt)(0)
+            planned_attempts = next(attempt_plans) if attempt_plans is not None else [0]
+            for attempt in planned_attempts:
+                cast(Callable[[int], None], on_attempt)(attempt)
         messages_obj = kwargs.get("messages")
         if isinstance(messages_obj, list):
             snapshot: list[dict[str, str]] = []
@@ -150,9 +158,11 @@ def run_harness_thread(
         try:
             result["value"] = RunResult(
                 code=harness.loop.run_harness(
-                    config_path=write_config(tmp_path, max_tokens=max_tokens),
+                    config_path=write_config(
+                        tmp_path, max_tokens=max_tokens, system_prompt=system_prompt
+                    ),
                     transport=transport,
-                    initial_template="initial task",
+                    initial_template=initial_template,
                     slot=SLOT,
                     base_dir=tmp_path,
                     max_turns=max_turns,

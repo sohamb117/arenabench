@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, Protocol
 
 from common import protocol as proto
 from harness import llm, parser, shell
 from harness.chat import Chat
 
 Emit = Callable[[proto.Frame], None]
+
+
+class TurnState(Protocol):
+    turn: int
+    pending_complete: bool
+
+    def emit(self, data: proto.Frame) -> None: ...
 
 
 def build_llm_response(
@@ -93,3 +100,24 @@ def run_commands(
 
 def chat_history_for_litellm(chat: Chat) -> list[dict[str, str]]:
     return [{"role": message.role, "content": message.content} for message in chat.history]
+
+
+def finish_turn(state: TurnState, chat: Chat, parsed: parser.ParsedResponse | None) -> bool:
+    summarized = chat.should_summarize()
+    state.emit(
+        proto.TurnSummary(
+            turn=state.turn,
+            action_count=len(parsed.commands) if parsed is not None else 0,
+            free_tokens=chat.free_tokens,
+            summarized=summarized,
+            history_chars=sum(len(message.content) for message in chat.history),
+        )
+    )
+    complete = parsed is not None and parsed.task_complete
+    if complete and state.pending_complete:
+        return True
+    state.pending_complete = complete
+    if summarized:
+        chat.summarize(f"[context summarized at turn {state.turn}]")
+    state.turn += 1
+    return False

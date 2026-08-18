@@ -52,13 +52,18 @@ class FakeResponse:
 
 
 def make_response(
-    content: str | None = CONTENT, finish_reason: str | None = "stop"
+    content: str | None = CONTENT,
+    finish_reason: str | None = "stop",
+    *,
+    prompt_tokens: int = PROMPT_TOKENS,
+    completion_tokens: int = COMPLETION_TOKENS,
+    total_tokens: int = TOTAL_TOKENS,
 ) -> FakeResponse:
     return FakeResponse(
         choices=[FakeChoice(message=FakeMessage(content=content), finish_reason=finish_reason)],
         usage=FakeUsage(
-            prompt_tokens=PROMPT_TOKENS,
-            completion_tokens=COMPLETION_TOKENS,
-            total_tokens=TOTAL_TOKENS,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
         ),
     )

@@ -22,7 +22,8 @@ MAX_CONTEXT_TOKENS = 200
 EXPECTED_HEARTBEAT_MESSAGES = 3
 EXPECTED_CONFIRMATION_CALLS = 2
 MIN_LLM_CALLS_FOR_HEARTBEAT_CHECK = 2
-TURN_0_FRAME_COUNT = 6
+TURN_0_FRAME_COUNT = 7
+TURN_WITHOUT_BASH_FRAME_COUNT = 5
 
 
 @pytest.fixture(autouse=True)
@@ -56,11 +57,13 @@ def test_one_llm_call_bash_frame_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     assert [frame.kind for frame in frames] == [
         "pid_announce",
         "llm_request",
+        "llm_context_snapshot",
         "llm_response",
         "bash_request",
         "bash_result",
         "turn_summary",
         "llm_request",
+        "llm_context_snapshot",
         "llm_response",
         "turn_summary",
         "harness_exit",
@@ -76,7 +79,7 @@ def test_heartbeat_injected_before_next_llm_request(
         monkeypatch,
         [make_response(), make_response(task_complete=True), make_response(task_complete=True)],
     )
-    first_turn = [recv(run.peer) for _ in range(4)]
+    first_turn = [recv(run.peer) for _ in range(TURN_WITHOUT_BASH_FRAME_COUNT)]
     send(run.peer, HeartbeatTick(elapsed_s=12.0, turn_hint=1))
     heartbeat = recv(run.peer)
     request = recv(run.peer)

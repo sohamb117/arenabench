@@ -177,7 +177,7 @@ logs/matches/demo-1v1/
       events.jsonl      # harness_exit, turn_summary
       bash.jsonl        # pid_announce, bash_request, bash_result
       api.jsonl         # llm_request, llm_response, heartbeat_injected
-      context.jsonl     # chat dumps
+      context.jsonl     # exact per-attempt messages and fatal provider outcomes
     01/
       …                 # one directory per slot, zero-padded width-2
 ```
@@ -189,6 +189,12 @@ uv run arenabench replay logs/matches/demo-1v1/
 ```
 
 `replay` prints the contents of `summary.json` with `json.dumps(…, indent=2, sort_keys=True)`.
+
+Treat the entire match directory as sensitive. Exact context snapshots can include
+credentials or other secrets that an agent discovered and placed in its conversation;
+ArenaBench does not add configured API keys, provider headers, or request configuration
+to those frames. New log directories use mode `0700` and files use `0600` on POSIX
+platforms. Preserve equivalent restrictions when copying or archiving a match.
 
 ---
 

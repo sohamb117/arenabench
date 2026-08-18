@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 import litellm
 from litellm import exceptions as litellm_exceptions
@@ -18,6 +19,11 @@ _RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})
 _FATAL_STATUS_CODES = frozenset({400, 401, 403, 404, 422})
 _SERVER_ERROR_MIN = 500
 _SERVER_ERROR_MAX = 599
+_MAX_ERROR_TEXT_CHARS = 1024
+_CREDENTIAL_PATTERNS = (
+    re.compile(r"(?i)(authorization\s*:\s*(?:bearer|basic)\s+)[^\s,;]+"),
+    re.compile(r"(?i)((?:api[_-]?key|access[_-]?token|secret)\s*[=:]\s*)[^\s,;]+"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +39,67 @@ class LlmCallResult:
     parse_ok: bool = True
 
 
+type LlmFailureCategory = Literal[
+    "context_too_large", "provider_error", "provider_refusal", "reservation_error"
+]
+
+
+@dataclass(frozen=True, slots=True)
+class LlmFailureMetadata:
+    category: LlmFailureCategory
+    attempt: int
+    finish_reason: str | None = None
+    error_class: str | None = None
+    status_code: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    latency_s: float | None = None
+
+
 class LlmCallError(ArenaError):
     """Raised on FATAL litellm errors that should end the harness."""
+
+    def __init__(self, message: str, metadata: LlmFailureMetadata | None = None) -> None:
+        super().__init__(message)
+        self.error_text = message
+        self.metadata = metadata
+
+    @property
+    def category(self) -> LlmFailureCategory | None:
+        return self.metadata.category if self.metadata is not None else None
+
+    @property
+    def attempt(self) -> int | None:
+        return self.metadata.attempt if self.metadata is not None else None
+
+    @property
+    def finish_reason(self) -> str | None:
+        return self.metadata.finish_reason if self.metadata is not None else None
+
+    @property
+    def error_class(self) -> str | None:
+        return self.metadata.error_class if self.metadata is not None else None
+
+    @property
+    def status_code(self) -> int | None:
+        return self.metadata.status_code if self.metadata is not None else None
+
+    @property
+    def prompt_tokens(self) -> int | None:
+        return self.metadata.prompt_tokens if self.metadata is not None else None
+
+    @property
+    def completion_tokens(self) -> int | None:
+        return self.metadata.completion_tokens if self.metadata is not None else None
+
+    @property
+    def total_tokens(self) -> int | None:
+        return self.metadata.total_tokens if self.metadata is not None else None
+
+    @property
+    def latency_s(self) -> float | None:
+        return self.metadata.latency_s if self.metadata is not None else None
 
 
 class _Message(Protocol):
@@ -142,7 +207,18 @@ def call(
             content = response.choices[0].message.content
             if content is None:
                 finish_reason = response.choices[0].finish_reason or "unknown"
-                raise LlmCallError(f"provider returned no text: finish_reason={finish_reason}")
+                raise LlmCallError(
+                    f"provider returned no text: finish_reason={finish_reason}",
+                    LlmFailureMetadata(
+                        category="provider_refusal",
+                        attempt=attempt,
+                        finish_reason=finish_reason,
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        latency_s=elapsed_s(started),
+                    ),
+                )
             return LlmCallResult(
                 content=content,
                 prompt_tokens=response.usage.prompt_tokens,
@@ -157,9 +233,9 @@ def call(
             if isinstance(exc, LlmCallError):
                 raise
             if _is_fatal(exc):
-                raise LlmCallError(str(exc)) from exc
+                raise _provider_error(exc, attempt, started) from exc
             if not _is_retryable(exc):
-                raise
+                raise _provider_error(exc, attempt, started) from exc
             last_retryable = exc
 
     return LlmCallResult(
@@ -208,3 +284,20 @@ def _status_code(exc: Exception) -> int:
     if isinstance(direct_status, int):
         return direct_status
     return 0
+
+
+def _provider_error(exc: Exception, attempt: int, started: float) -> LlmCallError:
+    status_code = _status_code(exc)
+    error_text = str(exc)[:_MAX_ERROR_TEXT_CHARS]
+    for pattern in _CREDENTIAL_PATTERNS:
+        error_text = pattern.sub(r"\1[REDACTED]", error_text)
+    return LlmCallError(
+        error_text,
+        LlmFailureMetadata(
+            category="provider_error",
+            attempt=attempt,
+            error_class=type(exc).__name__,
+            status_code=status_code or None,
+            latency_s=elapsed_s(started),
+        ),
+    )

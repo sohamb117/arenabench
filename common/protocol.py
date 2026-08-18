@@ -105,6 +105,37 @@ class LlmResponse(_Frame):
     error: str | None = None
 
 
+class LlmMessage(_Frame):
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str
+
+
+class LlmContextSnapshot(_Frame):
+    kind: Literal["llm_context_snapshot"] = "llm_context_snapshot"
+    turn: int = Field(ge=0)
+    request_id: str = Field(min_length=1, max_length=128)
+    attempt: int = Field(ge=0, le=10)
+    messages: list[LlmMessage] = Field(min_length=1)
+
+
+class LlmAttemptFailure(_Frame):
+    kind: Literal["llm_attempt_failure"] = "llm_attempt_failure"
+    turn: int = Field(ge=0)
+    request_id: str = Field(min_length=1, max_length=128)
+    attempt: int = Field(ge=0, le=10)
+    category: Literal[
+        "context_too_large", "provider_error", "provider_refusal", "reservation_error"
+    ]
+    finish_reason: str | None = Field(default=None, max_length=128)
+    error_text: str = Field(min_length=1, max_length=1024)
+    error_class: str | None = Field(default=None, max_length=128)
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    prompt_tokens: int | None = Field(default=None, ge=0, le=10_000_000)
+    completion_tokens: int | None = Field(default=None, ge=0, le=10_000_000)
+    total_tokens: int | None = Field(default=None, ge=0, le=10_000_000)
+    latency_s: float | None = Field(default=None, ge=0.0)
+
+
 class HeartbeatInjected(_Frame):
     kind: Literal["heartbeat_injected"] = "heartbeat_injected"
     turn: int
@@ -206,6 +237,8 @@ Frame = Annotated[
     | BudgetCapability
     | LlmReservationDecision
     | LlmResponse
+    | LlmContextSnapshot
+    | LlmAttemptFailure
     | HeartbeatInjected
     | TurnSummary
     | HarnessExit
