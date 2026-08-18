@@ -15,6 +15,8 @@ from tests.unit._match_config_helpers import (
     write_match,
 )
 
+BUDGET_USD = 12.5
+
 
 def test_valid_2_agent_config_parses_and_round_trips(tmp_path: pathlib.Path) -> None:
     path = write_match(tmp_path, valid_2_agent_payload())
@@ -28,6 +30,25 @@ def test_valid_2_agent_config_parses_and_round_trips(tmp_path: pathlib.Path) -> 
 def test_domain_allowlist_extra_defaults_none(tmp_path: pathlib.Path) -> None:
     cfg = load_match_config(write_match(tmp_path, valid_2_agent_payload()))
     assert cfg.domain_allowlist_extra is None
+
+
+def test_budget_caps_default_none_and_are_independent(tmp_path: pathlib.Path) -> None:
+    payload = valid_2_agent_payload()
+    payload["budget_usd"] = BUDGET_USD
+
+    cfg = load_match_config(write_match(tmp_path, payload))
+
+    assert cfg.budget_usd == BUDGET_USD
+    assert cfg.per_agent_budget_usd is None
+
+
+def test_absent_budget_keys_can_remain_omitted() -> None:
+    cfg = MatchConfig.model_validate(valid_2_agent_payload())
+
+    dumped = cfg.model_dump(mode="json", exclude_none=True)
+
+    assert "budget_usd" not in dumped
+    assert "per_agent_budget_usd" not in dumped
 
 
 def test_domain_allowlist_extra_parses_list_to_tuple(tmp_path: pathlib.Path) -> None:

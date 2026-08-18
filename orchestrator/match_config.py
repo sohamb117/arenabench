@@ -9,6 +9,10 @@ from common.errors import ConfigError
 from common.ids import make_match_id
 
 
+def _is_none(value: float | None) -> bool:
+    return value is None
+
+
 class AgentEntry(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
 
@@ -41,6 +45,18 @@ class MatchConfig(pydantic.BaseModel):
     max_duration_s: int = pydantic.Field(ge=10, le=86400)
     archive_grace_s: int = pydantic.Field(default=60, ge=0, le=3600)
     network_policy: Literal["allowlist", "full"] = "allowlist"
+    budget_usd: float | None = pydantic.Field(
+        default=None,
+        gt=0.0,
+        allow_inf_nan=False,
+        exclude_if=_is_none,
+    )
+    per_agent_budget_usd: float | None = pydantic.Field(
+        default=None,
+        gt=0.0,
+        allow_inf_nan=False,
+        exclude_if=_is_none,
+    )
     cgroup_limits: CgroupLimits | None = None
     domain_allowlist_extra: tuple[str, ...] | None = None
     agents: list[AgentEntry]

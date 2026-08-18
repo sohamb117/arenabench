@@ -1,3 +1,4 @@
+import math
 import pathlib
 
 import pytest
@@ -119,3 +120,17 @@ def test_missing_file_raises_config_error(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "missing.json"
     with pytest.raises(ConfigError):
         load_match_config(path)
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, math.inf, -math.inf, math.nan])
+@pytest.mark.parametrize("field", ["budget_usd", "per_agent_budget_usd"])
+def test_budget_caps_require_finite_positive_values(
+    tmp_path: pathlib.Path, field: str, value: float
+) -> None:
+    payload = valid_2_agent_payload()
+    payload[field] = value
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_match_config(write_match(tmp_path, payload))
+
+    assert exc_info.value.field == field
