@@ -1,0 +1,17 @@
+{
+  "match_id": "sol-prompt-flag-2ffa",
+  "n_agents": 2,
+  "heartbeat_interval_s": 30,
+  "grace_period_s": 10,
+  "max_duration_s": 90,
+  "archive_grace_s": 5,
+  "network_policy": "allowlist",
+  "domain_allowlist_extra": ["api.enterprise.githubcopilot.com"],
+  "cgroup_limits": null,
+  "budget_usd": 10.0,
+  "per_agent_budget_usd": 5.0,
+  "agents": [
+    {"slot": 0, "user": "agent0", "config": "configs/agents/copilot-gpt-5.6-sol-flag.json"},
+    {"slot": 1, "user": "agent1", "config": "configs/agents/copilot-gpt-5.6-sol-flag.json"}
+  ]
+}
