@@ -4,6 +4,7 @@ import getpass
 import logging
 import os
 import socket
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +22,14 @@ _SUMMARY_THRESHOLD = 8_000
 _TRUNCATE_BYTES = 10_240
 _ID_BYTES = 8
 _POLL_SLICE_S = 0.01
+_CAPABILITY_TIMEOUT_S = 30.0
+_RESERVATION_TIMEOUT_S = 10.0
+_BUDGET_CAPABILITY_VERSION = 1
 _LOG = logging.getLogger(__name__)
+
+
+class _ShutdownRequested(Exception):
+    pass
 
 
 @dataclass(slots=True)
@@ -31,6 +39,7 @@ class _State:
     seq: int = 0
     turn: int = 0
     pending_complete: bool = False
+    budget_enabled: bool = False
 
     def emit(self, data: proto.Frame) -> None:
         self.transport.send(
@@ -82,6 +91,8 @@ def run_harness(
                     return 0
         state.exit("clean", 0)
         return 0
+    except _ShutdownRequested:
+        return 0
     except llm.LlmCallError:
         _LOG.exception("harness loop hit fatal LLM error")
         state.exit("llm_fatal", 1)
@@ -113,22 +124,31 @@ def _setup(
             hostname=socket.gethostname(),
             parser=cfg.parser,
             model=cfg.model,
+            budget_capability_version=_BUDGET_CAPABILITY_VERSION,
         )
     )
+    deadline = time.monotonic() + _CAPABILITY_TIMEOUT_S
+    while True:
+        capability = state.transport.recv(timeout_s=max(0.0, deadline - time.monotonic()))
+        if capability is None:
+            raise llm.LlmCallError("budget capability negotiation timeout or channel close")
+        if isinstance(capability.data, proto.BudgetCapability):
+            state.budget_enabled = capability.data.enabled
+            break
+        if _handle_inbound(capability, chat, state) is not None:
+            raise _ShutdownRequested
     return cfg, api_key, chat
 
 
 def _process_pending(state: _State, chat: Chat, silence_threshold_s: float) -> int | None:
-    first = state.transport.recv(timeout_s=min(silence_threshold_s, _POLL_SLICE_S))
-    if first is not None:
-        return _handle_inbound(first, chat, state)
+    env = state.transport.recv(timeout_s=min(silence_threshold_s, _POLL_SLICE_S))
     while True:
-        env = state.transport.recv(timeout_s=0)
         if env is None:
             return None
         code = _handle_inbound(env, chat, state)
         if code is not None:
             return code
+        env = state.transport.recv(timeout_s=0)
 
 
 def _handle_inbound(env: proto.Envelope, chat: Chat, state: _State) -> int | None:
@@ -175,6 +195,7 @@ def _llm_turn(
     messages = helpers.chat_history_for_litellm(chat)
     prompt_chars = sum(len(message["content"]) for message in messages)
     last_excerpt = _last_user_excerpt(messages)
+    prompt_tokens = chat.prompt_tokens
 
     def _emit_attempt(attempt: int) -> None:
         # Plan §9 S16: one llm_request per attempt (same request_id), so a
@@ -190,8 +211,27 @@ def _llm_turn(
                 temperature=cfg.temperature,
                 last_user_excerpt=last_excerpt,
                 attempt=attempt,
+                prompt_tokens=prompt_tokens,
+                max_output_tokens=cfg.max_tokens,
+                fallback_models=cfg.fallbacks,
             )
         )
+        if not state.budget_enabled:
+            return
+        deadline = time.monotonic() + _RESERVATION_TIMEOUT_S
+        while True:
+            decision_env = state.transport.recv(timeout_s=max(0.0, deadline - time.monotonic()))
+            if decision_env is None:
+                raise llm.LlmCallError("reservation decision timeout or channel close")
+            decision = decision_env.data
+            if isinstance(decision, proto.LlmReservationDecision):
+                break
+            if _handle_inbound(decision_env, chat, state) is not None:
+                raise _ShutdownRequested
+        if decision.request_id != request_id or decision.attempt != attempt:
+            raise llm.LlmCallError("reservation decision correlation mismatch")
+        if not decision.granted:
+            raise llm.LlmCallError(f"reservation denied: {decision.reason}")
 
     result = llm.call(
         model=cfg.model,

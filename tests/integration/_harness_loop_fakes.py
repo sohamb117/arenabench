@@ -12,7 +12,7 @@ import pytest
 import harness.llm
 import harness.loop
 from common.clock import now_utc
-from common.protocol import Envelope, Frame
+from common.protocol import BudgetCapability, Envelope, Frame
 from harness.llm import LlmCallResult
 from harness.shell import CommandResult
 from harness.transport_fake import InMemoryTransport
@@ -115,11 +115,16 @@ def run_harness_thread(
     *,
     max_turns: int = 10,
     max_tokens: int = 10_000,
+    budget_enabled: bool = False,
+    send_capability: bool = True,
 ) -> HarnessRun:
     transport = InMemoryTransport()
     result: dict[str, RunResult] = {}
     captured_messages: list[list[dict[str, str]]] = []
     calls = iter(responses)
+    peer = transport.peer()
+    if send_capability:
+        send(peer, BudgetCapability(version=1, enabled=budget_enabled))
 
     def fake_call(**kwargs: object) -> LlmCallResult:
         on_attempt = kwargs.get("on_attempt")
@@ -159,9 +164,7 @@ def run_harness_thread(
 
     thread = threading.Thread(target=target, daemon=True)
     thread.start()
-    return HarnessRun(
-        peer=transport.peer(), result=result, thread=thread, captured_messages=captured_messages
-    )
+    return HarnessRun(peer=peer, result=result, thread=thread, captured_messages=captured_messages)
 
 
 def recv(peer: InMemoryTransport) -> Envelope:
