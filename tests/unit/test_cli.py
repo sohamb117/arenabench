@@ -10,6 +10,7 @@ from orchestrator import match_driver as match_driver_module
 from orchestrator._cli_helpers import AgentCredentials
 from orchestrator.cli import app
 from orchestrator.cloudinit import GuestProxyTarget
+from orchestrator.lifecycle import MatchOutcome
 from orchestrator.match_config import AgentEntry, MatchConfig
 
 _HEARTBEAT = 120
@@ -113,6 +114,37 @@ def test_run_command_reports_missing_golden_image(
 
     assert result.exit_code == _EXIT_RUNTIME_ERROR
     assert "golden image missing" in (result.output + (result.stderr or ""))
+
+
+def test_run_done_output_includes_estimated_spend(
+    runner: CliRunner, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "match.json"
+    path.write_text(json.dumps(_valid_match_payload()), encoding="utf-8")
+    golden = tmp_path / "golden.qcow2"
+    golden.write_bytes(b"qcow2-placeholder")
+
+    def fake_drive_match(*_args: object, **_kwargs: object) -> MatchOutcome:
+        return MatchOutcome(
+            result="victory",
+            winner=0,
+            cause="done",
+            final_state="DONE",
+            estimated_spend_usd=0.125,
+            estimated_spend_by_agent_usd={"0": 0.125, "1": 0.0},
+            budget_usd=1.0,
+            per_agent_budget_usd=None,
+        )
+
+    monkeypatch.setattr(
+        "orchestrator.cli.drive_match",
+        fake_drive_match,
+    )
+
+    result = runner.invoke(app, ["run", str(path), "--golden-image", str(golden)])
+
+    assert result.exit_code == 0
+    assert "spend=$0.125000000" in result.stdout
 
 
 def test_run_stops_proxy_when_render_user_data_fails(

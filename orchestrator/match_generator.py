@@ -36,6 +36,8 @@ def build_match_config_dict(
     archive_grace_s: int = _DEFAULT_ARCHIVE_GRACE_S,
     network_policy: str = "allowlist",
     domain_allowlist_extra: tuple[str, ...] | None = None,
+    budget_usd: float | None = None,
+    per_agent_budget_usd: float | None = None,
 ) -> dict[str, object]:
     """Build a match-config dict from an ordered list of agent config paths.
 
@@ -65,4 +67,8 @@ def build_match_config_dict(
     }
     if domain_allowlist_extra is not None:
         payload["domain_allowlist_extra"] = list(domain_allowlist_extra)
+    if budget_usd is not None:
+        payload["budget_usd"] = budget_usd
+    if per_agent_budget_usd is not None:
+        payload["per_agent_budget_usd"] = per_agent_budget_usd
     return payload

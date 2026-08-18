@@ -9,6 +9,8 @@ from orchestrator.cli import app
 from orchestrator.match_config import MatchConfig
 
 _N2 = 2
+_BUDGET_USD = 12.5
+_PER_AGENT_BUDGET_USD = 7.25
 
 
 @pytest.fixture
@@ -51,6 +53,35 @@ def test_new_match_emits_valid_json_to_stdout(runner: CliRunner, tmp_path: pathl
     cfg = MatchConfig.model_validate(payload)
     assert cfg.n_agents == _N2
     assert cfg.match_id == "qa"
+    assert "budget_usd" not in payload
+    assert "per_agent_budget_usd" not in payload
+
+
+def test_new_match_emits_requested_budget_caps(runner: CliRunner, tmp_path: pathlib.Path) -> None:
+    a0 = _write_agent(tmp_path, "a0.json")
+    a1 = _write_agent(tmp_path, "a1.json")
+
+    result = runner.invoke(
+        app,
+        [
+            "new-match",
+            "-a",
+            str(a0),
+            "-a",
+            str(a1),
+            "--match-id",
+            "qa",
+            "--budget-usd",
+            "12.5",
+            "--per-agent-budget-usd",
+            "7.25",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = cast(dict[str, object], json.loads(result.stdout))
+    assert payload["budget_usd"] == _BUDGET_USD
+    assert payload["per_agent_budget_usd"] == _PER_AGENT_BUDGET_USD
 
 
 def test_new_match_writes_out_file(runner: CliRunner, tmp_path: pathlib.Path) -> None:

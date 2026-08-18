@@ -105,7 +105,10 @@ def run_match_command(
     except ConfigError as exc:
         typer.echo(f"ERROR {exc}", err=True)
         raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
-    typer.echo(f"DONE result={outcome.result} winner={outcome.winner} cause={outcome.cause}")
+    done = f"DONE result={outcome.result} winner={outcome.winner} cause={outcome.cause}"
+    if outcome.budget_usd is not None or outcome.per_agent_budget_usd is not None:
+        done = f"{done} spend=${outcome.estimated_spend_usd:.9f}"
+    typer.echo(done)
 
 
 @app.command(name="build-vm")
@@ -141,6 +144,13 @@ def new_match(
     allowlist_extra: Annotated[
         list[str] | None, typer.Option("--allowlist-extra", help="Extra allowlisted domain")
     ] = None,
+    budget_usd: Annotated[
+        float | None, typer.Option("--budget-usd", help="Optional match-wide managed-call cap")
+    ] = None,
+    per_agent_budget_usd: Annotated[
+        float | None,
+        typer.Option("--per-agent-budget-usd", help="Optional per-agent managed-call cap"),
+    ] = None,
 ) -> None:
     """Generate a match.json from agent configs, auto-assigning slots + users.
 
@@ -159,6 +169,8 @@ def new_match(
             archive_grace_s=archive_grace,
             network_policy=network_policy,
             domain_allowlist_extra=extra,
+            budget_usd=budget_usd,
+            per_agent_budget_usd=per_agent_budget_usd,
         )
         config = MatchConfig.model_validate(payload)
         check_referenced_files_exist(config, _REPO_ROOT)
