@@ -30,7 +30,7 @@ def _agent(model: str, fallbacks: list[str] | None = None) -> AgentConfig:
     return AgentConfig(
         model=model,
         temperature=0.0,
-        max_tokens=100,
+        max_output_tokens=100,
         request_timeout_s=10,
         num_retries=1,
         fallbacks=fallbacks,

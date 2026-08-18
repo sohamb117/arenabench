@@ -1,7 +1,7 @@
 {
   "model": "github_copilot/claude-opus-5",
   "temperature": 0.0,
-  "max_tokens": 4096,
+  "max_output_tokens": 4096,
   "request_timeout_s": 120,
   "num_retries": 3,
   "fallbacks": null,

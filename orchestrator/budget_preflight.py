@@ -38,7 +38,7 @@ def build_budget_runtime(
         policies[entry.slot] = SlotBudgetPolicy(
             model=agent.model,
             fallback_models=(),
-            max_output_tokens=agent.max_tokens,
+            max_output_tokens=agent.max_output_tokens,
         )
     try:
         profiles = load_profiles(tuple(models))

@@ -12,6 +12,7 @@ from harness.config import load_config, read_system_prompt, resolve_api_key
 EXPECTED_MODEL = "anthropic/claude-opus-4-7"
 EXPECTED_TEMPERATURE = 0.7
 EXPECTED_MAX_TOKENS = 4096
+EXPECTED_CONTEXT_TOKENS = 128_000
 EXPECTED_REQUEST_TIMEOUT_S = 60
 EXPECTED_NUM_RETRIES = 3
 EXPECTED_REASONING_EFFORT = "medium"
@@ -61,7 +62,8 @@ def test_load_config_valid_round_trips(tmp_path: pathlib.Path) -> None:
     # Then
     assert cfg.model == EXPECTED_MODEL
     assert cfg.temperature == EXPECTED_TEMPERATURE
-    assert cfg.max_tokens == EXPECTED_MAX_TOKENS
+    assert cfg.max_output_tokens == EXPECTED_MAX_TOKENS
+    assert cfg.max_context_tokens is None
     assert cfg.request_timeout_s == EXPECTED_REQUEST_TIMEOUT_S
     assert cfg.num_retries == EXPECTED_NUM_RETRIES
     assert cfg.reasoning_effort == EXPECTED_REASONING_EFFORT
@@ -135,6 +137,18 @@ def test_max_tokens_zero_raises_config_error(tmp_path: pathlib.Path) -> None:
     # When / Then
     with pytest.raises(ConfigError):
         load_config(p)
+
+
+def test_explicit_output_and_context_tokens_round_trip(tmp_path: pathlib.Path) -> None:
+    payload = _valid_payload()
+    del payload["max_tokens"]
+    payload["max_output_tokens"] = EXPECTED_MAX_TOKENS
+    payload["max_context_tokens"] = EXPECTED_CONTEXT_TOKENS
+
+    cfg = load_config(_write_config(tmp_path, payload))
+
+    assert cfg.max_output_tokens == EXPECTED_MAX_TOKENS
+    assert cfg.max_context_tokens == EXPECTED_CONTEXT_TOKENS
 
 
 def test_missing_file_raises_config_error(tmp_path: pathlib.Path) -> None:

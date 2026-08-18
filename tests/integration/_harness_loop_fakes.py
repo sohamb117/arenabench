@@ -97,6 +97,7 @@ def write_config(
                 "model": "test/model",
                 "temperature": 0.1,
                 "max_tokens": max_tokens,
+                "max_context_tokens": max_tokens,
                 "request_timeout_s": 1,
                 "num_retries": 1,
                 "fallbacks": None,

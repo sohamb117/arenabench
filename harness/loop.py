@@ -112,7 +112,7 @@ def _setup(
     chat = Chat(
         f"{system}\n\n{initial_template}",
         cfg.model,
-        cfg.max_tokens,
+        cfg.resolved_context_tokens,
         _SUMMARY_THRESHOLD,
         _TRUNCATE_BYTES,
     )
@@ -198,7 +198,7 @@ def _llm_turn(
                 last_user_excerpt=last_excerpt,
                 attempt=attempt,
                 prompt_tokens=prompt_tokens,
-                max_output_tokens=cfg.max_tokens,
+                max_output_tokens=cfg.max_output_tokens,
                 fallback_models=cfg.fallbacks,
             )
         )
@@ -240,7 +240,7 @@ def _llm_turn(
             model=cfg.model,
             messages=messages,
             temperature=cfg.temperature,
-            max_tokens=cfg.max_tokens,
+            max_tokens=cfg.max_output_tokens,
             timeout_s=float(cfg.request_timeout_s),
             num_retries=cfg.num_retries,
             fallbacks=cfg.fallbacks,

@@ -5,6 +5,7 @@ import pathlib
 from typing import Annotated, Literal
 
 import pydantic
+from pydantic import AliasChoices
 
 from common.errors import ConfigError
 
@@ -19,7 +20,15 @@ class AgentConfig(pydantic.BaseModel):
 
     model: Annotated[str, pydantic.Field(min_length=1)]
     temperature: Annotated[float, pydantic.Field(ge=0.0, le=2.0)]
-    max_tokens: Annotated[int, pydantic.Field(ge=1, le=200_000)]
+    max_output_tokens: Annotated[
+        int,
+        pydantic.Field(
+            ge=1,
+            le=200_000,
+            validation_alias=AliasChoices("max_output_tokens", "max_tokens"),
+        ),
+    ]
+    max_context_tokens: Annotated[int, pydantic.Field(ge=1, le=10_000_000)] | None = None
     request_timeout_s: Annotated[int, pydantic.Field(ge=1, le=600)]
     num_retries: Annotated[int, pydantic.Field(ge=0, le=10)]
     fallbacks: list[str] | None = None
@@ -29,6 +38,16 @@ class AgentConfig(pydantic.BaseModel):
     system_prompt_path: str
     mock_response: str | None = None
     mock_raise_on_turn: int | None = None
+
+    @property
+    def resolved_context_tokens(self) -> int:
+        if self.max_context_tokens is None:
+            raise ConfigError(
+                "max_context_tokens must be resolved before harness startup",
+                path="<config>",
+                field="max_context_tokens",
+            )
+        return self.max_context_tokens
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_mode(self) -> "AgentConfig":

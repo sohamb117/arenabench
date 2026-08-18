@@ -13,6 +13,7 @@ from orchestrator._cli_helpers import (
     load_agent_blobs,
     resolve_agent_credentials,
 )
+from orchestrator.agent_runtime import resolve_context_limits
 from orchestrator.budget_preflight import build_budget_runtime
 from orchestrator.cloudinit import render_user_data, write_seed_iso
 from orchestrator.lifecycle import MatchContext, MatchOutcome, run_match
@@ -48,12 +49,13 @@ def drive_match(
     """
     check_referenced_files_exist(config, _REPO_ROOT)
     budget_runtime = build_budget_runtime(config)
+    context_limits = resolve_context_limits(config.agents, repo_root=_REPO_ROOT)
     log_root.mkdir(parents=True, exist_ok=True)
     match_id = make_match_id(config.match_id)
     logger = MatchLogger(log_root, match_id, config.n_agents)
     overlay_dir = logger.match_dir / "vm"
     overlay_dir.mkdir(parents=True, exist_ok=True)
-    config_blobs, prompt_blobs = load_agent_blobs(config.agents)
+    config_blobs, prompt_blobs = load_agent_blobs(config.agents, context_limits)
     agent_credentials = resolve_agent_credentials(config.agents)
     key_path, ssh_pubkey = ensure_ssh_keypair(overlay_dir)
     proxy = None

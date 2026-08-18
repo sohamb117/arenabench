@@ -161,8 +161,9 @@ def test_run_stops_proxy_when_render_user_data_fails(
 
     def fake_load_agent_blobs(
         agents: list[AgentEntry],
+        context_limits: dict[int, int] | None = None,
     ) -> tuple[dict[int, str], dict[int, str]]:
-        _ = agents
+        _ = (agents, context_limits)
         return {0: "{}", 1: "{}"}, {0: "p", 1: "p"}
 
     def fake_resolve_agent_credentials(

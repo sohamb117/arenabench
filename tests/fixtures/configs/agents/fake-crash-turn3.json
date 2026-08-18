@@ -1,7 +1,7 @@
 {
   "model": "fake/crash-turn3",
   "temperature": 0.0,
-  "max_tokens": 256,
+  "max_output_tokens": 256,
   "request_timeout_s": 60,
   "num_retries": 0,
   "fallbacks": null,
