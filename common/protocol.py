@@ -10,14 +10,22 @@ import json
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from common.context_protocol import LlmContextChunk, LlmContextSnapshot, LlmMessage
 
 __all__ = ["LlmContextChunk", "LlmContextSnapshot", "LlmMessage"]
 
 MAX_FRAME_BYTES = 64 * 1024
-_MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True)
+_MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 _RAW_ENVELOPE_ADAPTER: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 _ORCH_TO_HARNESS_KINDS: frozenset[str] = frozenset(
     {"heartbeat_tick", "shutdown", "budget_capability", "llm_reservation_decision"}
@@ -100,13 +108,18 @@ class LlmResponse(_Frame):
     content: str
     parser: Literal["json", "xml"]
     parse_ok: bool
-    parsed: dict[str, object] | None = None
+    parsed: dict[str, JsonValue] | None = None
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
     cost_usd: float | None = None
     latency_s: float
-    error: str | None = Field(default=None, max_length=1024)
+    parse_error: str | None = Field(
+        default=None,
+        validation_alias="error",
+        serialization_alias="error",
+        max_length=1024,
+    )
 
 
 class LlmAttemptFailure(_Frame):
@@ -284,13 +297,15 @@ def parse_envelope(line: str) -> Envelope:
     raw: dict[str, object] = _RAW_ENVELOPE_ADAPTER.validate_json(line)
     data = raw.get("data")
     kind = raw.get("kind")
+    if kind == "llm_response" and isinstance(data, dict) and "parse_error" in data:
+        raise ValueError("parse_error is not a wire field")
     if isinstance(kind, str) and isinstance(data, dict) and "kind" not in data:
         raw = {**raw, "data": {**data, "kind": kind}}
     return Envelope.model_validate(raw)
 
 
 def serialize_envelope(env: Envelope) -> str:
-    body = env.model_dump(mode="json", exclude={"data": {"kind"}})
+    body = env.model_dump(mode="json", by_alias=True, exclude={"data": {"kind"}})
     out = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
     if len(out.encode("utf-8")) > MAX_FRAME_BYTES:
         raise ValueError(f"serialized frame exceeds {MAX_FRAME_BYTES} bytes")

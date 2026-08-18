@@ -5,7 +5,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
+
+from common.ids import make_match_id
+from orchestrator.run_layout import make_run_id
 
 
 class TranscriptModel(BaseModel):
@@ -35,6 +38,16 @@ class RunInfo(TranscriptModel):
     legacy_run: int | None = None
     legacy_run_count: int | None = None
 
+    @field_validator("match_id")
+    @classmethod
+    def _validate_match_id(cls, value: str) -> str:
+        return make_match_id(value)
+
+    @field_validator("run_id")
+    @classmethod
+    def _validate_run_id(cls, value: str | None) -> str | None:
+        return None if value is None else make_run_id(value)
+
 
 class Message(TranscriptModel):
     role: Literal["system", "user", "assistant", "tool"]
@@ -50,14 +63,11 @@ class UnavailableContext(TranscriptModel):
     kind: Literal["unavailable"] = "unavailable"
     reason: Literal[
         "hash_mismatch",
-        "invalid_base64",
-        "invalid_payload",
+        "context_logging_error",
+        "corrupt_chunks",
         "legacy_log",
-        "metadata_mismatch",
         "missing_chunks",
         "not_recorded",
-        "out_of_order_chunks",
-        "size_mismatch",
     ]
 
 

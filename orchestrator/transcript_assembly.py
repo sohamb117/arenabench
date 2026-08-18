@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from common.context_protocol import LlmContextChunk
 from orchestrator.transcript import (
@@ -93,6 +94,13 @@ def _build_attempt(
     context = source.contexts.get(key)
     failure = source.failures.get(key)
     response = source.responses.get(key)
+    context_failure: Literal["context_logging_error", "context_too_large"] | None = None
+    if failure is not None:
+        match failure.category:
+            case "context_logging_error" | "context_too_large":
+                context_failure = failure.category
+            case "provider_error" | "provider_refusal" | "reservation_error":
+                pass
     request_model = RequestMetadata(
         request_id=request.request_id,
         model=request.model,
@@ -101,12 +109,15 @@ def _build_attempt(
         temperature=request.temperature,
         prompt_tokens=request.prompt_tokens,
         max_output_tokens=request.max_output_tokens,
-        fallback_models=request.fallback_models,
+        fallback_models=(
+            tuple(request.fallback_models) if request.fallback_models is not None else None
+        ),
         last_user_excerpt=request.last_user_excerpt,
     )
     context_model = assemble_context(
         context,
         source.context_chunks.get(key, ()),
+        context_failure,
         legacy=source.legacy,
     )
     usage: Usage | None = None
@@ -118,7 +129,7 @@ def _build_attempt(
             parser=response.parser,
             parse_ok=response.parse_ok,
             parsed=response.parsed,
-            parse_error=response.error,
+            parse_error=response.parse_error,
         )
         usage = Usage(
             prompt_tokens=response.prompt_tokens,

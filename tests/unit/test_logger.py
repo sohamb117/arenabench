@@ -155,7 +155,7 @@ def test_write_envelope_routes_one_frame_per_file(tmp_path: Path) -> None:
                 total_tokens=3,
                 cost_usd=0.5,
                 latency_s=0.25,
-                error=None,
+                parse_error=None,
             ),
             6,
         ),

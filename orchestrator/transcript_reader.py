@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from heapq import merge
+from operator import attrgetter
 from pathlib import Path
 from typing import Final
 
@@ -31,11 +33,13 @@ from orchestrator.transcript_frames import (
     StateChangeFrame,
     TurnSummaryFrame,
 )
-from orchestrator.transcript_jsonl import epoch_lines, read_jsonl
+from orchestrator.transcript_jsonl import FrameBudget, epoch_lines, read_jsonl
 
 _AGENT_NAME_WIDTH: Final = 2
+_MAX_AGENT_LOG_DIRECTORIES: Final = 16
 _AGENT_FILES: Final = ("context.jsonl", "api.jsonl", "bash.jsonl", "events.jsonl")
 _ARCHIVED_LEGACY_PREFIX: Final = "legacy-"
+_MAX_MANIFEST_BYTES: Final = 16 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +54,7 @@ class TranscriptReader:
     def __init__(self, match_dir: Path, filters: TranscriptFilters) -> None:
         self._path = match_dir
         self._filters = filters
+        self._budget = FrameBudget()
 
     def read(self) -> TranscriptDocument:
         if not self._path.exists():
@@ -100,9 +105,13 @@ class TranscriptReader:
         if path.is_symlink() or not path.is_file():
             raise TranscriptError(f"run manifest is not a file: {path}")
         try:
-            return RunManifest.model_validate_json(path.read_text(encoding="utf-8"))
+            with path.open("rb") as handle:
+                raw = handle.readline(_MAX_MANIFEST_BYTES + 1)
+            if len(raw) > _MAX_MANIFEST_BYTES:
+                raise TranscriptError(f"oversized run manifest: {path}")
+            return RunManifest.model_validate_json(raw)
         except (OSError, UnicodeError, ValidationError) as exc:
-            raise TranscriptError(f"invalid run manifest {path}: {exc}") from exc
+            raise TranscriptError(f"invalid run manifest: {path}") from exc
 
     def _select_epoch(self, manifest: RunManifest | None) -> _Epoch:
         if manifest is not None:
@@ -110,13 +119,13 @@ class TranscriptReader:
                 raise TranscriptError("--legacy-run cannot be used with an isolated run")
             return _Epoch(index=0, count=1, start=None, end=None)
         starts: list[datetime] = []
-        for envelope in read_jsonl(self._path / "match.jsonl"):
+        for envelope in read_jsonl(self._path / "match.jsonl", self._budget):
             if envelope.kind != "match_state_change":
                 continue
             try:
                 state = StateChangeFrame.model_validate(envelope.data)
             except ValidationError as exc:
-                raise TranscriptError(f"invalid match_state_change: {exc}") from exc
+                raise TranscriptError("invalid match_state_change") from exc
             if state.from_state == "IDLE" and state.to_state == "VM_BOOTING":
                 starts.append(envelope.ts)
         if not starts:
@@ -143,23 +152,27 @@ class TranscriptReader:
         )
         if not slots:
             raise TranscriptError(f"no agent log directories found under {agents_dir}")
+        if len(slots) > _MAX_AGENT_LOG_DIRECTORIES:
+            raise TranscriptError(f"agent log directory count exceeds {_MAX_AGENT_LOG_DIRECTORIES}")
         return slots
 
     def _reservations(self, epoch: _Epoch) -> dict[tuple[int, str, int], Reservation]:
         reservations: dict[tuple[int, str, int], Reservation] = {}
-        for envelope in epoch_lines(self._path / "match.jsonl", epoch.start, epoch.end):
+        for envelope in epoch_lines(
+            self._path / "match.jsonl", epoch.start, epoch.end, self._budget
+        ):
             if envelope.kind != "llm_reservation_decision":
                 continue
             try:
                 frame = ReservationFrame.model_validate(envelope.data)
             except ValidationError as exc:
-                raise TranscriptError(f"invalid llm_reservation_decision: {exc}") from exc
+                raise TranscriptError("invalid llm_reservation_decision") from exc
             destination = envelope.dst or ""
             if not destination.startswith("agent") or not destination[5:].isdigit():
-                raise TranscriptError(
-                    f"invalid reservation destination for {frame.request_id}: {envelope.dst}"
-                )
+                continue
             slot = int(destination[5:])
+            if slot >= _MAX_AGENT_LOG_DIRECTORIES:
+                continue
             reservations[(slot, frame.request_id, frame.attempt)] = Reservation(
                 granted=frame.granted,
                 reason=frame.reason,
@@ -174,11 +187,13 @@ class TranscriptReader:
         reservations: dict[tuple[int, str, int], Reservation],
     ) -> Agent:
         directory = self._path / "agents" / f"{slot:02d}"
-        envelopes = [
-            envelope
-            for name in _AGENT_FILES
-            for envelope in epoch_lines(directory / name, epoch.start, epoch.end)
-        ]
+        envelopes = merge(
+            *(
+                epoch_lines(directory / name, epoch.start, epoch.end, self._budget)
+                for name in _AGENT_FILES
+            ),
+            key=attrgetter("ts"),
+        )
         requests: dict[AttemptKey, RequestFrame] = {}
         contexts: dict[AttemptKey, ContextFrame] = {}
         context_chunks: dict[AttemptKey, list[ContextChunkFrame]] = {}
@@ -188,7 +203,7 @@ class TranscriptReader:
         bash_results: dict[str, BashResultFrame] = {}
         summaries: dict[int, TurnSummaryFrame] = {}
         harness_exit: HarnessExitFrame | None = None
-        for envelope in sorted(envelopes, key=lambda item: item.ts):
+        for envelope in envelopes:
             try:
                 match envelope.kind:
                     case "llm_request":
@@ -220,7 +235,7 @@ class TranscriptReader:
                     case _:
                         continue
             except ValidationError as exc:
-                raise TranscriptError(f"invalid {envelope.kind} for agent {slot}: {exc}") from exc
+                raise TranscriptError(f"invalid {envelope.kind} for agent {slot}") from exc
         turns = build_turns(
             AssemblyInput(
                 requests=requests,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -12,9 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal, NewType
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from common.ids import MatchId
+from common.ids import MatchId, make_match_id
 
 RunId = NewType("RunId", str)
 
@@ -35,6 +36,26 @@ class RunManifest(BaseModel):
     run_id: Annotated[str, Field(pattern=_RUN_ID_PATTERN)]
     started_at: datetime
     n_agents: Annotated[int, Field(ge=1, le=16)]
+
+    @field_validator("match_id")
+    @classmethod
+    def _validate_match_id(cls, value: str) -> MatchId:
+        return make_match_id(value)
+
+    @field_validator("run_id")
+    @classmethod
+    def _validate_run_id(cls, value: str) -> RunId:
+        return make_run_id(value)
+
+
+class InvalidRunIdError(ValueError):
+    pass
+
+
+def make_run_id(value: str) -> RunId:
+    if re.fullmatch(_RUN_ID_PATTERN, value) is None:
+        raise InvalidRunIdError
+    return RunId(value)
 
 
 @dataclass(frozen=True, slots=True)

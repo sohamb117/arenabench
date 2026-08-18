@@ -216,10 +216,20 @@ uv run arenabench transcript logs/matches/demo-1v1/ --agent 0 --turn 2
 uv run arenabench transcript logs/matches/demo-1v1/ --format json
 ```
 
-Text output is ANSI-free and follows stable `RUN`, `AGENT`, `TURN`, `ATTEMPT`, `CONTEXT`,
-`REPLY`/`FAILURE`, `PARSE`, `COMMAND`/`RESULT`, `USAGE`, `LATENCY`, `COST`, and `RESERVED`
-sections. JSON output is a versioned typed document and preserves logged message, reply, command,
-and terminal-output strings exactly.
+Text output treats every logged string as untrusted terminal input. It removes complete terminal
+escape sequences (including ANSI CSI, OSC, DCS, and reset), rejects non-printable control
+characters except tab and newline, and indents every content continuation line so logged text
+cannot forge the stable `RUN`, `AGENT`, `TURN`, `ATTEMPT`, `CONTEXT`, `REPLY`/`FAILURE`, `PARSE`,
+`COMMAND`/`RESULT`, `USAGE`, `LATENCY`, `COST`, or `RESERVED` sections. JSON output does not apply
+text sanitization: its versioned typed document preserves logged message, reply, command, and
+terminal-output strings exactly, with control characters escaped by the JSON serializer.
+
+The reader validates the canonical wire schemas, rejects frames larger than 64 KiB before an
+unbounded allocation, and caps each transcript request at 10,000 frame reads and 16 agent log
+directories. Malformed-data diagnostics report only the file, line, field location, and error type;
+the CLI sanitizes and truncates them rather than reflecting raw log values. Reservation frames with
+invalid agent destinations are ignored, so corrupt routing metadata cannot abort the transcript or
+create a reservation for another agent.
 
 Directories produced by current ArenaBench versions contain one isolated execution and a
 `run.json` manifest. The command also accepts the old direct layout and archived

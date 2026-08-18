@@ -38,7 +38,7 @@ def build_llm_response(
         total_tokens=result.total_tokens,
         cost_usd=result.cost_usd,
         latency_s=result.latency_s,
-        error=attempt_logging.safe_error_text(error) if error is not None else None,
+        parse_error=attempt_logging.safe_error_text(error) if error is not None else None,
     )
 
 

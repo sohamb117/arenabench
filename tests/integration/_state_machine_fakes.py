@@ -122,7 +122,7 @@ def llm_response_env(turn: int = 1) -> Envelope:
             completion_tokens=1,
             total_tokens=2,
             latency_s=1.0,
-            error=None,
+            parse_error=None,
         ),
     )
 

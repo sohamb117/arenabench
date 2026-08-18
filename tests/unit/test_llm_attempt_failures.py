@@ -96,6 +96,6 @@ def test_llm_response_error_is_redacted_and_bounded() -> None:
 
     response = build_llm_response(result, "json", 2, "req", False, result.error)
 
-    assert response.error is not None
-    assert secret not in response.error
-    assert len(response.error) <= MAX_ERROR_TEXT_CHARS
+    assert response.parse_error is not None
+    assert secret not in response.parse_error
+    assert len(response.parse_error) <= MAX_ERROR_TEXT_CHARS

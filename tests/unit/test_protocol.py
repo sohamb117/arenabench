@@ -104,7 +104,7 @@ def envelope_for(kind: str, data: Frame, seq: int = 42) -> Envelope:
                 total_tokens=12,
                 cost_usd=0.01,
                 latency_s=0.3,
-                error=None,
+                parse_error=None,
             ),
         ),
         (
@@ -193,6 +193,63 @@ def test_serialize_lifts_kind_and_omits_payload_kind() -> None:
 
     assert wire["kind"] == "shutdown"
     assert wire["data"] == {"reason": "stop"}
+
+
+def test_llm_response_serializes_parse_error_under_legacy_wire_key() -> None:
+    response = LlmResponse(
+        turn=2,
+        request_id="llm1",
+        content="bad",
+        parser="json",
+        parse_ok=False,
+        prompt_tokens=10,
+        completion_tokens=2,
+        total_tokens=12,
+        latency_s=0.3,
+        parse_error="invalid JSON",
+    )
+
+    wire = serialize_envelope(envelope_for("llm_response", response))
+
+    assert '"error":"invalid JSON"' in wire
+    assert '"parse_error"' not in wire
+
+
+@pytest.mark.parametrize(
+    "data_update",
+    [
+        {"parse_error": "invalid JSON"},
+        {"error": "invalid JSON", "parse_error": "duplicate"},
+    ],
+)
+def test_llm_response_rejects_python_only_parse_error_on_wire(
+    data_update: dict[str, str],
+) -> None:
+    line = json.dumps(
+        {
+            "v": 1,
+            "ts": "2026-06-28T19:00:00.123456Z",
+            "seq": 1,
+            "src": "agent0",
+            "dst": "orchestrator",
+            "kind": "llm_response",
+            "data": {
+                "turn": 2,
+                "request_id": "llm1",
+                "content": "bad",
+                "parser": "json",
+                "parse_ok": False,
+                "prompt_tokens": 10,
+                "completion_tokens": 2,
+                "total_tokens": 12,
+                "latency_s": 0.3,
+                **data_update,
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="parse_error is not a wire field"):
+        parse_envelope(line)
 
 
 def test_bad_kind_raises_validation_error() -> None:

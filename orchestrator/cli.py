@@ -16,7 +16,7 @@ from orchestrator.match_driver import drive_match
 from orchestrator.match_generator import build_match_config_dict
 from orchestrator.match_validation import check_referenced_files_exist
 from orchestrator.transcript import TranscriptError, TranscriptFormat, read_transcript
-from orchestrator.transcript_render import render_text
+from orchestrator.transcript_render import render_text, sanitize_text
 
 app = typer.Typer(
     name="arenabench",
@@ -78,7 +78,8 @@ def transcript_command(
             legacy_run=legacy_run,
         )
     except (TranscriptError, ValidationError, ValueError) as exc:
-        typer.echo(f"ERROR {exc}", err=True)
+        safe_error = sanitize_text(str(exc)).replace("\n", " ")[:512]
+        typer.echo(f"ERROR {safe_error}", err=True)
         raise typer.Exit(code=_EXIT_CONFIG_ERROR) from exc
     match parsed_format:
         case TranscriptFormat.TEXT:

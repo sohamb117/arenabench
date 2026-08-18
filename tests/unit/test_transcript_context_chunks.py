@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -53,8 +54,8 @@ def test_reader_reconstructs_exact_chunked_context(tmp_path: Path) -> None:
     ("mutation", "reason"),
     [
         ("missing", "missing_chunks"),
-        ("order", "out_of_order_chunks"),
-        ("payload", "invalid_base64"),
+        ("order", "missing_chunks"),
+        ("payload", "corrupt_chunks"),
         ("hash", "hash_mismatch"),
     ],
 )
@@ -69,3 +70,50 @@ def test_reader_marks_invalid_chunk_sets_unavailable(
 
     assert context.kind == "unavailable"
     assert context.reason == reason
+
+
+@pytest.mark.parametrize("category", ["context_logging_error", "context_too_large"])
+def test_reader_projects_context_logging_failures_as_unavailable(
+    tmp_path: Path, category: str
+) -> None:
+    run = exact_run(tmp_path)
+    context_path = run / "agents" / "00" / "context.jsonl"
+    failure: JsonRecord = {
+        "turn": 2,
+        "request_id": "req-unicode",
+        "attempt": 0,
+        "category": category,
+        "error_text": "context unavailable",
+    }
+    write_jsonl(
+        context_path,
+        [envelope("2026-08-17T12:00:01Z", "agent0", "llm_attempt_failure", failure)],
+    )
+
+    context = read_transcript(run).agents[0].turns[0].attempts[0].context
+
+    assert context.kind == "unavailable"
+    assert context.reason == "context_logging_error"
+
+
+def test_context_logging_failure_overrides_recorded_snapshot(tmp_path: Path) -> None:
+    run = exact_run(tmp_path)
+    context_path = run / "agents" / "00" / "context.jsonl"
+    existing = context_path.read_text(encoding="utf-8")
+    failure: JsonRecord = {
+        "turn": 2,
+        "request_id": "req-unicode",
+        "attempt": 0,
+        "category": "context_logging_error",
+        "error_text": "context unavailable",
+    }
+    failure_line = envelope("2026-08-17T12:00:02Z", "agent0", "llm_attempt_failure", failure)
+    context_path.write_text(
+        existing + json.dumps(failure_line) + "\n",
+        encoding="utf-8",
+    )
+
+    context = read_transcript(run).agents[0].turns[0].attempts[0].context
+
+    assert context.kind == "unavailable"
+    assert context.reason == "context_logging_error"

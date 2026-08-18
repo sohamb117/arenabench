@@ -132,6 +132,20 @@ def test_provider_failure_and_retry_are_distinct_attempts(tmp_path: Path) -> Non
     assert turn.attempts[1].commands[0].request_id == "retry-bash"
 
 
+def test_response_error_is_projected_only_as_parse_error(tmp_path: Path) -> None:
+    run = exact_run(tmp_path)
+    api_path = run / "agents" / "00" / "api.jsonl"
+    records = [json.loads(line) for line in api_path.read_text(encoding="utf-8").splitlines()]
+    records[1]["data"]["parse_ok"] = False
+    records[1]["data"]["error"] = "invalid JSON"
+    write_jsonl(api_path, records)
+
+    outcome = read_transcript(run).agents[0].turns[0].attempts[0].outcome
+
+    assert outcome.kind == "reply"
+    assert outcome.parse_error == "invalid JSON"
+
+
 def test_filters_select_agent_and_turn(tmp_path: Path) -> None:
     run = exact_run(tmp_path)
 
@@ -177,6 +191,56 @@ def test_reservations_are_correlated_by_agent_slot(tmp_path: Path) -> None:
     assert agent_one is not None
     assert agent_zero.reserved_nano_usd == _AGENT_ZERO_RESERVED
     assert agent_one.reserved_nano_usd == _AGENT_ONE_RESERVED
+
+
+def test_legacy_reservation_shape_is_normalized_at_reader_boundary(tmp_path: Path) -> None:
+    run = exact_run(tmp_path)
+    legacy = envelope(
+        "2026-08-17T12:00:01Z",
+        "orchestrator",
+        "llm_reservation_decision",
+        {
+            "turn": 2,
+            "request_id": "req-unicode",
+            "attempt": 0,
+            "granted": True,
+            "reason": None,
+            "reserved_nano_usd": _AGENT_ZERO_RESERVED,
+        },
+    )
+    legacy["dst"] = "agent0"
+    write_jsonl(run / "match.jsonl", [legacy])
+
+    attempt = read_transcript(run).agents[0].turns[0].attempts[0]
+
+    assert attempt.reservation is not None
+    assert attempt.reservation.reason == "granted"
+    assert attempt.reservation.reserved_nano_usd == _AGENT_ZERO_RESERVED
+
+
+def test_legacy_pid_capability_alias_is_normalized(tmp_path: Path) -> None:
+    run = legacy_run(tmp_path)
+    bash = run / "agents" / "00" / "bash.jsonl"
+    bash.parent.mkdir(parents=True, exist_ok=True)
+    pid = envelope(
+        "2026-08-17T00:00:01Z",
+        "agent0",
+        "pid_announce",
+        {
+            "pid": 42,
+            "user": "agent0",
+            "uid": 1000,
+            "hostname": "guest",
+            "parser": "json",
+            "model": "provider/model",
+            "budget_protocol_version": 1,
+        },
+    )
+    bash.write_text(json.dumps(pid) + "\n", encoding="utf-8")
+
+    document = read_transcript(run)
+
+    assert document.agents[0].slot == 0
 
 
 def test_legacy_defaults_latest_epoch_and_supports_explicit_epoch(tmp_path: Path) -> None:
