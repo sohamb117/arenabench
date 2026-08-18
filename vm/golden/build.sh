@@ -248,6 +248,11 @@ else
 fi
 
 echo ">>> finalizing golden image"
+if ! qemu-img check "$GOLDEN_PATH.tmp"; then
+    echo "ERROR: customized golden image failed qemu-img check" >&2
+    rm -f "$GOLDEN_PATH.tmp"
+    exit 1
+fi
 mv "$GOLDEN_PATH.tmp" "$GOLDEN_PATH"
 GOLDEN_SHA256=$(shasum -a 256 "$GOLDEN_PATH" | awk '{print $1}')
 
