@@ -19,7 +19,7 @@ See [running matches](running-matches.md) for how to use these configs end-to-en
 | `n_agents` | `int` | 2–16 | — | Number of participating agents. |
 | `heartbeat_interval_s` | `int` | 1–3600 | — | How often (seconds) the orchestrator injects a heartbeat turn into an idle agent. |
 | `grace_period_s` | `int` | 1–600 | — | Seconds the sole survivor must remain alive before a `victory` is declared. |
-| `max_duration_s` | `int` | 10–86400 | — | Wall-clock cap on the match; result is `timeout` if multiple agents survive to the limit. |
+| `max_duration_s` | `int` \| `null` | 10–31 536 000 for explicit integers | — | Wall-clock cap on the match. `null` is normalized to an effective one-year cap (31 536 000 seconds), not literal infinity; result is `timeout` if multiple agents survive to the limit. |
 | `archive_grace_s` | `int` | 0–3600 | `60` | Extra seconds the orchestrator waits after a terminal decision before tearing down the VM. |
 | `network_policy` | `"allowlist"` \| `"full"` | — | `"allowlist"` | `allowlist` routes outbound HTTPS through the host-side egress proxy; `full` bypasses it. |
 | `budget_usd` | finite positive `float` \| omitted | `> 0` | omitted | Match-wide cap for conservative managed LiteLLM-call exposure. |
@@ -44,6 +44,11 @@ to integer nano-USD by rounding down; reservations round charges up. Equality is
 allowed. Capped runs require complete token pricing in LiteLLM metadata and reject
 nonempty agent `fallbacks` before the VM boots because aggregate fallback billing cannot
 be bounded safely.
+
+Setting `max_duration_s` to `null` is useful when a budget should be the practical stop
+condition. ArenaBench still stores and passes a numeric one-year duration internally, and
+match-wide or per-agent budget exhaustion terminates the match before that duration when
+the configured cap is reached.
 
 ---
 
