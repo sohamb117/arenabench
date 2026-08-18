@@ -54,6 +54,7 @@ def test_default_remote_command_sources_secrets_file(monkeypatch: pytest.MonkeyP
     body = cmd[1:-1]
     assert body == (
         ". /home/agent0/.secrets 2>/dev/null; "
+        "export LITELLM_LOCAL_MODEL_COST_MAP=True; "
         "exec /opt/arenabench-venv/bin/python3 -m harness /home/agent0/config.json"
     )
     assert "env" not in argv

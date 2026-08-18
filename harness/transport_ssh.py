@@ -121,6 +121,7 @@ class SshTransport:
             # body as a single argument to `bash -lc`, not as two statements.
             harness_cmd = (
                 f". /home/{self._cfg.user}/.secrets 2>/dev/null; "
+                "export LITELLM_LOCAL_MODEL_COST_MAP=True; "
                 f"exec {_GUEST_PYTHON} -m harness /home/{self._cfg.user}/config.json"
             )
             command: list[str] = ["bash", "-lc", shlex.quote(harness_cmd)]
