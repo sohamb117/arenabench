@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from common.ids import AgentSlot
 from common.protocol import Envelope, Frame, Kill0, Kill0Response
+from orchestrator.budget_runtime import BudgetRuntime
 from orchestrator.heartbeat_scheduler import AgentSchedulerState
 from orchestrator.liveness import AgentLivenessState, LivenessThresholds
 from orchestrator.logger import MatchLogger
@@ -30,6 +31,20 @@ class MatchOutcome(BaseModel):
     transport_used: Literal["vsock", "ssh"] | None = None
     cid: Annotated[int, Field(ge=0)] | None = None
     winner_pid: Annotated[int, Field(ge=1)] | None = None
+    estimated_spend_usd: Annotated[float, Field(ge=0.0)] = 0.0
+    estimated_spend_by_agent_usd: dict[str, Annotated[float, Field(ge=0.0)]] = Field(
+        default_factory=dict
+    )
+    budget_usd: Annotated[float, Field(gt=0.0)] | None = None
+    per_agent_budget_usd: Annotated[float, Field(gt=0.0)] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MatchSpendSummary:
+    estimated_spend_usd: float
+    estimated_spend_by_agent_usd: dict[str, float]
+    budget_usd: float | None
+    per_agent_budget_usd: float | None
 
 
 def build_outcome(
@@ -42,11 +57,13 @@ def build_outcome(
     transport_used: Literal["vsock", "ssh"] | None = None,
     cid: int | None = None,
     winner_pid: int | None = None,
+    spend: MatchSpendSummary | None = None,
 ) -> MatchOutcome:
     """Construct a validated MatchOutcome. Extracted so lifecycle.run_match
     stays under the 250 LOC cap; the cast + multi-line kwargs live here.
     """
     res_lit = cast(Literal["victory", "draw", "timeout", "error"], result)
+    summary = spend or MatchSpendSummary(0.0, {}, None, None)
     return MatchOutcome(
         result=res_lit,
         winner=winner_slot,
@@ -57,6 +74,10 @@ def build_outcome(
         transport_used=transport_used,
         cid=cid,
         winner_pid=winner_pid,
+        estimated_spend_usd=summary.estimated_spend_usd,
+        estimated_spend_by_agent_usd=summary.estimated_spend_by_agent_usd,
+        budget_usd=summary.budget_usd,
+        per_agent_budget_usd=summary.per_agent_budget_usd,
     )
 
 
@@ -72,6 +93,7 @@ class MatchContext:
     poll_interval_s: float = 1.0
     transport_used: Literal["vsock", "ssh"] | None = None
     cid: int | None = None
+    budget_runtime: BudgetRuntime | None = None
 
 
 @dataclass

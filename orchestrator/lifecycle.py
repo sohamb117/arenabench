@@ -13,6 +13,7 @@ from common.protocol import (
     PidAnnounce,
 )
 from orchestrator import heartbeat_scheduler, liveness, winner
+from orchestrator import lifecycle_budget as budget
 from orchestrator._lifecycle_state import (
     AgentState,
     MatchContext,
@@ -24,7 +25,7 @@ from orchestrator._lifecycle_state import (
 __all__ = ["MatchContext", "MatchOutcome", "run_match"]
 
 
-def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
+def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0911, PLR0912, PLR0915
     state_name: str = "IDLE"
     seq = 0
 
@@ -63,6 +64,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
             transport_used=ctx.transport_used,
             cid=ctx.cid,
             winner_pid=winner_pid,
+            spend=budget.spend_summary(ctx),
         )
         ctx.logger.write_summary(out.model_dump())
         transition("DONE", cause)
@@ -111,6 +113,9 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                 ctx.logger.write_envelope(env)
                 agents[slot].last_frame_ts = ctx.clock()
                 if env.kind == "pid_announce" and isinstance(env.data, PidAnnounce):
+                    if not budget.negotiate_capability(ctx, slot, port, env.data, mk_env):
+                        transition("PROVISIONING_FAILED", "budget_capability_required")
+                        return finish("error", None, "budget_capability_required")
                     announced.add(slot)
                     agents[slot].pid = env.data.pid
         if len(announced) == ctx.match_config.n_agents:
@@ -130,6 +135,7 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
     while True:
         now = ctx.clock()
         elapsed_s = now - match_start_ts
+        exhausted: budget.BudgetExhausted | None = None
 
         for slot, port in ctx.agent_ports.items():
             st = agents[slot]
@@ -139,6 +145,9 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                     break
                 st.last_frame_ts = now
                 ctx.logger.write_envelope(env)
+                exhausted = budget.process_budget_frame(ctx, slot, port, env, mk_env)
+                if exhausted is not None:
+                    break
                 if env.kind == "llm_request":
                     st.llm_call_start_ts = now
                 elif env.kind == "llm_response":
@@ -149,8 +158,22 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0912, PLR0915
                         transition("IN_MATCH", "first_llm_response")
                 elif env.kind == "harness_exit":
                     st.vsock_connected = False
+            if exhausted is not None:
+                break
             if st.vsock_connected and not ctx.vsock_server.is_open(port):
                 st.vsock_connected = False
+
+        if exhausted is not None:
+            budget.broadcast_budget_shutdown(ctx, mk_env, exhausted.reason)
+            transition("ARCHIVING", exhausted.reason)
+            alive_now = sorted(slot for slot, st in agents.items() if not st.dead_emitted)
+            return finish(
+                "timeout",
+                None,
+                exhausted.reason,
+                alive_at_timeout=alive_now,
+                total_duration_s=ctx.clock() - match_start_ts,
+            )
 
         poll_kill0_responses(ctx, agents, mk_env, now)
 

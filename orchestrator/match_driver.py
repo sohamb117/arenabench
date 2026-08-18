@@ -13,6 +13,7 @@ from orchestrator._cli_helpers import (
     load_agent_blobs,
     resolve_agent_credentials,
 )
+from orchestrator.budget_preflight import build_budget_runtime
 from orchestrator.cloudinit import render_user_data, write_seed_iso
 from orchestrator.lifecycle import MatchContext, MatchOutcome, run_match
 from orchestrator.liveness import LivenessThresholds
@@ -46,6 +47,7 @@ def drive_match(
     server, terminates + cleans the VM, and stops the proxy.
     """
     check_referenced_files_exist(config, _REPO_ROOT)
+    budget_runtime = build_budget_runtime(config)
     log_root.mkdir(parents=True, exist_ok=True)
     match_id = make_match_id(config.match_id)
     logger = MatchLogger(log_root, match_id, config.n_agents)
@@ -114,6 +116,7 @@ def drive_match(
             poll_interval_s=1.0,
             transport_used="ssh",
             cid=None,
+            budget_runtime=budget_runtime,
         )
         return run_match(ctx)
     finally:
