@@ -66,6 +66,7 @@ the configured cap is reached.
 | `num_retries` | `int` | 0–10 | — | LiteLLM retry count on transient errors. |
 | `fallbacks` | `[str, …]` \| `null` | — | `null` | LiteLLM fallback model list. |
 | `reasoning_effort` | `none\|minimal\|low\|medium\|high\|xhigh\|default` \| `null` | — | `null` | Passed to models that support extended thinking (e.g. o-series). |
+| `api_mode` | `"chat_completions"` \| `"responses"` | — | `"chat_completions"` | Provider API surface. Use `"responses"` for Copilot models whose `/models` metadata excludes `/chat/completions`, such as GPT-5.5. |
 | `parser` | `"json"` \| `"xml"` | — | `"json"` | Response parser; use `"xml"` for models that struggle with strict JSON. |
 | `api_key_env` | `str` \| `null` | `^[A-Z][A-Z0-9_]*$` (ALLCAPS) | — | **Name** of the host env var holding the API key. Required unless the model is `github_copilot/…` or mock fields are set. |
 | `system_prompt_path` | `str` | — | — | Repo-root-relative path to the system prompt file. Resolved by the orchestrator and seeded into the guest at run time. |
