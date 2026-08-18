@@ -5,9 +5,11 @@ from typing import cast
 
 import pytest
 
+from common.errors import TransportError
 from common.protocol import (
     BootAckResponse,
     BudgetCapability,
+    Envelope,
     LlmRequest,
     LlmReservationDecision,
     PidAnnounce,
@@ -177,4 +179,44 @@ def test_budget_denial_broadcasts_shutdown_and_returns_timeout(
     assert outcome.winner is None
     assert outcome.alive_at_timeout == [0, 1]
     assert outcome.total_duration_s is not None
+    assert outcome.estimated_spend_by_agent_usd == {"0": 0.0, "1": 0.0}
+
+
+def test_budget_denial_ignores_closed_channel_during_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx, server = _context(monkeypatch, cap=0.5)
+    _schedule_boot(server)
+    server.schedule(0.2, PORT_0, make_env("pid_announce", _announce(0, capable=True)))
+    server.schedule(0.3, PORT_1, make_env("pid_announce", _announce(1, capable=True)))
+    server.schedule(
+        1.0,
+        PORT_0,
+        make_env(
+            "llm_request",
+            LlmRequest(
+                turn=0,
+                request_id="request",
+                model="provider/model",
+                messages_count=1,
+                prompt_chars=10,
+                prompt_tokens=10,
+                max_output_tokens=10,
+                temperature=0.0,
+            ),
+        ),
+    )
+    send_frame = server.send_frame
+
+    def fail_closed_shutdown(port: int, env: Envelope) -> None:
+        if port == PORT_1 and getattr(env, "kind", None) == "shutdown":
+            raise TransportError("ssh transport is closed", port=port)
+        send_frame(port, env)
+
+    monkeypatch.setattr(server, "send_frame", fail_closed_shutdown)
+
+    outcome = run_match(ctx)
+
+    assert outcome.result == "timeout"
+    assert outcome.cause == "global_budget_exhausted"
     assert outcome.estimated_spend_by_agent_usd == {"0": 0.0, "1": 0.0}

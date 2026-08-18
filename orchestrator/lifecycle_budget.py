@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from common.errors import TransportError
 from common.protocol import (
     BudgetCapability,
     Envelope,
@@ -72,10 +73,13 @@ def process_budget_frame(
 
 def broadcast_budget_shutdown(ctx: MatchContext, mk_env: EnvelopeFactory, reason: str) -> None:
     for slot, port in ctx.agent_ports.items():
-        ctx.vsock_server.send_frame(
-            port,
-            mk_env("shutdown", Shutdown(reason=reason), dst=f"agent{slot}"),
-        )
+        try:
+            ctx.vsock_server.send_frame(
+                port,
+                mk_env("shutdown", Shutdown(reason=reason), dst=f"agent{slot}"),
+            )
+        except TransportError:
+            continue
 
 
 def spend_summary(ctx: MatchContext) -> MatchSpendSummary:
