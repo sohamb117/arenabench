@@ -22,6 +22,7 @@ def build_llm_response(
     return proto.LlmResponse(
         turn=turn,
         request_id=request_id,
+        attempt=result.attempt,
         content=result.content,
         parser=mode,
         parse_ok=parse_ok,

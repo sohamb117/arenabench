@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from litellm import exceptions as litellm_exceptions
 
-from harness.llm import call
+from harness.llm import LlmCallError, call
 from tests.unit._llm_fixtures import (
     CONTENT,
     COST_USD,
@@ -52,6 +53,7 @@ def test_call_fires_on_attempt_once_per_retry_for_429_then_success() -> None:
     assert attempts == [0, 1]
     assert result.content == CONTENT
     assert result.error is None
+    assert result.attempt == 1
 
 
 def test_call_fires_on_attempt_once_for_mock_response() -> None:
@@ -150,3 +152,25 @@ def test_call_with_num_retries_one_exhausts_after_two_failures() -> None:
     assert completion.call_count == _TWO_ATTEMPTS
     assert result.error is not None
     assert "429" in result.error
+
+
+def test_call_denial_from_attempt_gate_makes_zero_provider_calls() -> None:
+    def deny(_attempt: int) -> None:
+        raise LlmCallError("reservation denied")
+
+    with (
+        patch("harness.llm.litellm.completion") as completion,
+        pytest.raises(LlmCallError, match="reservation denied"),
+    ):
+        call(
+            model=MODEL,
+            messages=MESSAGES,
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            timeout_s=TIMEOUT_S,
+            num_retries=NUM_RETRIES,
+            fallbacks=[FALLBACK_MODEL],
+            on_attempt=deny,
+        )
+
+    completion.assert_not_called()
