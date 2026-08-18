@@ -74,7 +74,9 @@ uv run arenabench run configs/matches/demo-1v1.json
    prompts, and credentials.
 5. QEMU boots over a per-match qcow2 overlay; EDK2 firmware auto-detected.
 6. Orchestrator waits for SSH readiness, then drives `lifecycle.run_match`.
-7. Logs written to `logs/matches/demo-1v1/`; VM torn down on completion.
+7. Logs written to `logs/matches/demo-1v1/`; VM torn down on completion. Reusing the
+   match ID first moves the complete prior directory to
+   `logs/archive/demo-1v1/<run_id>/`, then creates a fresh current directory.
 
 When the match ends:
 
@@ -166,6 +168,7 @@ After a match the log directory is at `logs/matches/<match_id>/`:
 
 ```
 logs/matches/demo-1v1/
+  run.json              # run ID, UTC start time, match ID, and agent count
   summary.json          # final outcome: result, winner, cause
   match.jsonl           # cross-agent events and state transitions
   orchestrator.log      # structured orchestrator log
@@ -182,6 +185,12 @@ logs/matches/demo-1v1/
       …                 # one directory per slot, zero-padded width-2
 ```
 
+`logs/matches/<match_id>/` always contains exactly the latest execution. Each run has a
+sortable `run_id` made from its UTC start timestamp plus a random suffix. Before a
+repeated match starts, ArenaBench moves the prior directory intact to
+`logs/archive/<match_id>/<run_id>/`; it never merges or appends JSONL across runs. An
+archive-name collision aborts the new run without moving the current directory.
+
 Pretty-print the outcome:
 
 ```bash
@@ -189,6 +198,7 @@ uv run arenabench replay logs/matches/demo-1v1/
 ```
 
 `replay` prints the contents of `summary.json` with `json.dumps(…, indent=2, sort_keys=True)`.
+The same direct-path command works for an archived run by passing its archive directory.
 
 Treat the entire match directory as sensitive. Exact context snapshots can include
 credentials or other secrets that an agent discovered and placed in its conversation;

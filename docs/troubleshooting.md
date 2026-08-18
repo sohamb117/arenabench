@@ -192,3 +192,18 @@ nonempty fallback list.
 metadata to LiteLLM or the LiteLLM fork used by your installation. Do not patch a model
 name, provider rule, or price into ArenaBench. Uncapped legacy runs do not perform this
 metadata preflight.
+
+---
+
+## Repeated match ID fails on an archive collision
+
+**Symptom:** Starting a previously used match ID raises `FileExistsError` for
+`logs/archive/<match-id>/<run-id>/` before VM startup.
+
+**Cause:** The archive destination already exists. ArenaBench fails closed rather than
+merging, overwriting, or appending logs. The current directory remains at
+`logs/matches/<match-id>/`.
+
+**Fix:** Inspect both directories and resolve the duplicate outside ArenaBench while
+preserving owner-only access. Do not combine their JSONL files; each directory is one
+execution identified by its `run.json` manifest.

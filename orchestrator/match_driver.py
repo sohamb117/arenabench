@@ -51,7 +51,7 @@ def drive_match(
     log_root.mkdir(parents=True, exist_ok=True)
     match_id = make_match_id(config.match_id)
     logger = MatchLogger(log_root, match_id, config.n_agents)
-    overlay_dir = log_root / "matches" / config.match_id / "vm"
+    overlay_dir = logger.match_dir / "vm"
     overlay_dir.mkdir(parents=True, exist_ok=True)
     config_blobs, prompt_blobs = load_agent_blobs(config.agents)
     agent_credentials = resolve_agent_credentials(config.agents)

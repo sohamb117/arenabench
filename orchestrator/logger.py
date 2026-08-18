@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from common.errors import LifecycleError
 from common.ids import AgentSlot, MatchId, make_agent_slot
 from common.protocol import Envelope, serialize_envelope
+from orchestrator.run_layout import prepare_run_directory
 
 _AGENT_WIDTH = 2
 _EMPTY = ""
@@ -54,20 +55,14 @@ class MatchLogger:
     def __init__(self, log_root: Path, match_id: MatchId, n_agents: int) -> None:
         self._log_root = log_root
         self._match_id = match_id
-        matches_dir = log_root / "matches"
-        self._mkdir_private(log_root)
-        self._mkdir_private(matches_dir)
-        self._match_dir = matches_dir / str(match_id)
-        self._mkdir_private(self._match_dir)
+        self._match_dir = prepare_run_directory(log_root, match_id, n_agents)
 
         self._match_file = self._match_dir / "match.jsonl"
         self._orchestrator_log = self._match_dir / "orchestrator.log"
-        self._match_handle = self._match_file.open("a", encoding="utf-8", buffering=1)
-        self._orchestrator_handle = self._orchestrator_log.open("a", encoding="utf-8", buffering=1)
-        self._match_file.chmod(_PRIVATE_FILE_MODE)
-        self._orchestrator_log.chmod(_PRIVATE_FILE_MODE)
         self._agent_files: dict[AgentSlot, _AgentFiles] = {}
-        self._handles: list[TextIO] = [self._match_handle, self._orchestrator_handle]
+        self._handles: list[TextIO] = []
+        self._match_handle = self._open_file(self._match_file)
+        self._orchestrator_handle = self._open_file(self._orchestrator_log)
 
         agents_dir = self._match_dir / "agents"
         self._mkdir_private(agents_dir)
@@ -88,7 +83,7 @@ class MatchLogger:
         return self._match_dir
 
     def _open_file(self, path: Path) -> TextIO:
-        handle = path.open("a", encoding="utf-8", buffering=1)
+        handle = path.open("x", encoding="utf-8", buffering=1)
         path.chmod(_PRIVATE_FILE_MODE)
         self._handles.append(handle)
         return handle

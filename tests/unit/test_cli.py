@@ -151,6 +151,7 @@ def test_run_stops_proxy_when_render_user_data_fails(
     runner: CliRunner, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stopped: list[str] = []
+    overlay_dirs: list[pathlib.Path] = []
 
     class FakeProxy:
         port = 12345
@@ -171,7 +172,7 @@ def test_run_stops_proxy_when_render_user_data_fails(
         return AgentCredentials(env_vars={}, secret_files={})
 
     def fake_ensure_ssh_keypair(overlay_dir: pathlib.Path) -> tuple[pathlib.Path, str]:
-        _ = overlay_dir
+        overlay_dirs.append(overlay_dir)
         return tmp_path / "ssh_key", "ssh-ed25519 test"
 
     def fake_build_egress_proxy(
@@ -213,6 +214,7 @@ def test_run_stops_proxy_when_render_user_data_fails(
         )
 
     assert stopped == ["proxy.stop"]
+    assert overlay_dirs == [tmp_path / "matches" / "demo-1v1" / "vm"]
 
 
 def test_build_vm_shells_out_to_build_script(
