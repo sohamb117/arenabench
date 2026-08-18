@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Protocol, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 from common.ids import AgentSlot
-from common.protocol import Envelope, Frame, Kill0, Kill0Response
+from common.protocol import Envelope, Frame, HarnessExit, Kill0, Kill0Response
 from orchestrator.budget_runtime import BudgetRuntime
 from orchestrator.heartbeat_scheduler import AgentSchedulerState
 from orchestrator.liveness import AgentLivenessState, LivenessThresholds
@@ -107,6 +107,7 @@ class AgentState:
     kill0_ts: float = 0.0
     pid: int | None = None
     dead_emitted: bool = False
+    exit_frame: HarnessExit | None = None
 
     def to_liveness(self) -> AgentLivenessState:
         return AgentLivenessState(

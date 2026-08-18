@@ -188,7 +188,7 @@ def test_harness_dead_and_match_terminated_frames(two_agent_ctx: MatchContext) -
     dead_data = dead[0].data
     assert isinstance(dead_data, HarnessDead)
     assert dead_data.slot == 0
-    assert dead_data.cause == "vsock_disconnect+kill0_dead"
+    assert dead_data.cause == "harness_exit_crash"
     assert len(term) == 1
     term_data = term[0].data
     assert isinstance(term_data, MatchTerminated)

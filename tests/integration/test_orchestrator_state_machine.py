@@ -3,7 +3,7 @@ from typing import cast
 
 import pytest
 
-from common.protocol import BootAckResponse, MatchStateChange, PidAnnounce
+from common.protocol import BootAckResponse, HarnessDead, MatchStateChange, PidAnnounce
 from orchestrator.lifecycle import MatchContext, run_match
 from orchestrator.liveness import LivenessThresholds
 from orchestrator.logger import MatchLogger
@@ -85,7 +85,9 @@ def test_s1_happy_victory(base_ctx: MatchContext) -> None:
 
     assert outcome.result == "victory"
     assert outcome.winner == 0
-    assert outcome.cause == "opponent_crashed"
+    assert outcome.cause == "opponent_completed"
+    deaths = [env.data for env in _logger(base_ctx).envs if isinstance(env.data, HarnessDead)]
+    assert deaths[0].cause == "harness_exit_clean"
     assert state_transitions(_logger(base_ctx).envs) == [
         "VM_BOOTING",
         "PROVISIONING",

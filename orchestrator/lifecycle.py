@@ -7,6 +7,7 @@ from common.protocol import (
     Envelope,
     Frame,
     HarnessDead,
+    HarnessExit,
     HeartbeatTick,
     MatchStateChange,
     MatchTerminated,
@@ -157,6 +158,8 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0911, PLR0912, PLR
                             other.last_frame_ts = now
                         transition("IN_MATCH", "first_llm_response")
                 elif env.kind == "harness_exit":
+                    if isinstance(env.data, HarnessExit):
+                        st.exit_frame = env.data
                     st.vsock_connected = False
             if exhausted is not None:
                 break
@@ -208,7 +211,11 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0911, PLR0912, PLR
                 alive_set.add(slot)
             else:
                 st.dead_emitted = True
-                cause = liveness.cause_of_death(lstate, now, ctx.liveness)
+                cause = (
+                    f"harness_exit_{st.exit_frame.reason}"
+                    if st.exit_frame is not None
+                    else liveness.cause_of_death(lstate, now, ctx.liveness)
+                )
                 dead_env = mk_env(
                     "harness_dead",
                     HarnessDead(slot=slot, cause=cause),
@@ -262,7 +269,22 @@ def run_match(ctx: MatchContext) -> MatchOutcome:  # noqa: PLR0911, PLR0912, PLR
                     alive_at_timeout=alive_now,
                     total_duration_s=ctx.clock() - match_start_ts,
                 )
-            return finish(out.result, out.winner, out.cause)
+            cause = out.cause
+            if out.result == "victory":
+                exit_reasons = {
+                    st.exit_frame.reason
+                    for slot, st in agents.items()
+                    if slot != out.winner and st.exit_frame is not None
+                }
+                if exit_reasons == {"clean"}:
+                    cause = "opponent_completed"
+                elif "llm_fatal" in exit_reasons:
+                    cause = "opponent_llm_fatal"
+                elif "crash" in exit_reasons:
+                    cause = "opponent_crashed"
+                elif not exit_reasons:
+                    cause = "opponent_disconnected"
+            return finish(out.result, out.winner, cause)
 
         if cast(str, state_name) != "WINNER_GRACE":
             last_alive_count = len(alive_set)
