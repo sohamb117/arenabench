@@ -20,6 +20,7 @@ def build_budget_runtime(
     *,
     load_agent: AgentLoader = load_config,
     load_profiles: ProfileLoader = derive_pricing_profiles,
+    output_limits: Mapping[int, int] | None = None,
 ) -> BudgetRuntime | None:
     if config.budget_usd is None and config.per_agent_budget_usd is None:
         return None
@@ -38,7 +39,11 @@ def build_budget_runtime(
         policies[entry.slot] = SlotBudgetPolicy(
             model=agent.model,
             fallback_models=(),
-            max_output_tokens=agent.max_output_tokens,
+            max_output_tokens=(
+                output_limits[entry.slot]
+                if output_limits is not None
+                else agent.resolved_budget_output_tokens
+            ),
         )
     try:
         profiles = load_profiles(tuple(models))

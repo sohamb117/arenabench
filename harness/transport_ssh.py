@@ -78,7 +78,7 @@ class SshTransport:
 
     def recv(self, timeout_s: float | None = None) -> Envelope | None:
         proc = self._proc
-        if proc is None or proc.poll() is not None:
+        if proc is None:
             return None
         stdout = proc.stdout
         if stdout is None:

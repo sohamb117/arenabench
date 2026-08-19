@@ -14,9 +14,28 @@ class ResponsesResult:
     output_tokens: int
     total_tokens: int
     cost_usd: float | None
+    status: str | None
+    incomplete_reason: str | None
+    reasoning_tokens: int
 
 
 class ResponsesCaller(Protocol):
+    def __call__(
+        self,
+        *,
+        model: str,
+        custom_llm_provider: str,
+        api_base: str,
+        api_key: str,
+        extra_headers: dict[str, object],
+        input: list[dict[str, str]],
+        reasoning: dict[str, str],
+        store: bool,
+        timeout: float,
+    ) -> object: ...
+
+
+class ResponsesCallerWithLimit(Protocol):
     def __call__(
         self,
         *,
@@ -38,18 +57,29 @@ class ResponsesUsage(Protocol):
     output_tokens: int
     total_tokens: int
     cost: float | None
+    output_tokens_details: ResponsesOutputDetails | None
+
+
+class ResponsesOutputDetails(Protocol):
+    reasoning_tokens: int
+
+
+class IncompleteDetails(Protocol):
+    reason: str
 
 
 class ResponsesAPIResponse(Protocol):
     output_text: str
     usage: ResponsesUsage | None
+    status: str | None
+    incomplete_details: IncompleteDetails | None
 
 
 def call_copilot_responses(
     *,
     model: str,
     messages: list[dict[str, str]],
-    max_output_tokens: int,
+    max_output_tokens: int | None,
     timeout_s: float,
     reasoning_effort: str,
     caller: ResponsesCaller | None = None,
@@ -71,27 +101,45 @@ def call_copilot_responses(
         "x-vscode-user-agent-library-version": "electron-fetch",
     }
     invoke = caller or cast(ResponsesCaller, litellm.responses)
-    raw = invoke(
-        model=resolved_model.removeprefix("responses/"),
-        custom_llm_provider="openai",
-        api_base=api_base,
-        api_key=token,
-        extra_headers=headers,
-        input=messages,
-        max_output_tokens=max_output_tokens,
-        reasoning={"effort": reasoning_effort},
-        store=False,
-        timeout=timeout_s,
-    )
+    if max_output_tokens is None:
+        raw = invoke(
+            model=resolved_model.removeprefix("responses/"),
+            custom_llm_provider="openai",
+            api_base=api_base,
+            api_key=token,
+            extra_headers=headers,
+            input=messages,
+            reasoning={"effort": reasoning_effort},
+            store=False,
+            timeout=timeout_s,
+        )
+    else:
+        raw = cast(ResponsesCallerWithLimit, invoke)(
+            model=resolved_model.removeprefix("responses/"),
+            custom_llm_provider="openai",
+            api_base=api_base,
+            api_key=token,
+            extra_headers=headers,
+            input=messages,
+            max_output_tokens=max_output_tokens,
+            reasoning={"effort": reasoning_effort},
+            store=False,
+            timeout=timeout_s,
+        )
     response = cast(ResponsesAPIResponse, raw)
     usage = response.usage
     if usage is None:
         msg = "responses provider returned no usage"
         raise RuntimeError(msg)
+    details = usage.output_tokens_details
+    incomplete = response.incomplete_details
     return ResponsesResult(
         content=response.output_text,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         total_tokens=usage.total_tokens,
         cost_usd=usage.cost,
+        status=response.status,
+        incomplete_reason=incomplete.reason if incomplete is not None else None,
+        reasoning_tokens=details.reasoning_tokens if details is not None else 0,
     )

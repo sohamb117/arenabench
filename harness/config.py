@@ -20,14 +20,12 @@ class AgentConfig(pydantic.BaseModel):
 
     model: Annotated[str, pydantic.Field(min_length=1)]
     temperature: Annotated[float, pydantic.Field(ge=0.0, le=2.0)]
-    max_output_tokens: Annotated[
-        int,
-        pydantic.Field(
-            ge=1,
-            le=200_000,
-            validation_alias=AliasChoices("max_output_tokens", "max_tokens"),
-        ),
-    ]
+    max_output_tokens: int | None = pydantic.Field(
+        default=None,
+        ge=1,
+        le=200_000,
+        validation_alias=AliasChoices("max_output_tokens", "max_tokens"),
+    )
     max_context_tokens: Annotated[int, pydantic.Field(ge=1, le=10_000_000)] | None = None
     request_timeout_s: Annotated[int, pydantic.Field(ge=1, le=600)]
     num_retries: Annotated[int, pydantic.Field(ge=0, le=10)]
@@ -49,6 +47,16 @@ class AgentConfig(pydantic.BaseModel):
                 field="max_context_tokens",
             )
         return self.max_context_tokens
+
+    @property
+    def resolved_budget_output_tokens(self) -> int:
+        if self.max_output_tokens is not None:
+            return self.max_output_tokens
+        raise ConfigError(
+            "max_output_tokens must be resolved from provider metadata before harness startup",
+            path="<config>",
+            field="max_output_tokens",
+        )
 
     @pydantic.model_validator(mode="after")
     def _validate_auth_mode(self) -> "AgentConfig":

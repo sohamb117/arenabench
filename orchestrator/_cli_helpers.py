@@ -42,6 +42,7 @@ _EDK2_VARS_CANDIDATES = (
 def load_agent_blobs(
     agents: list[AgentEntry],
     context_limits: dict[int, int] | None = None,
+    output_limits: dict[int, int] | None = None,
 ) -> tuple[dict[int, str], dict[int, str]]:
     """Return (config_blobs, prompt_blobs) keyed by slot, ready to seed via cloud-init.
 
@@ -63,10 +64,10 @@ def load_agent_blobs(
             )
         prompt_blobs[agent.slot] = (_REPO_ROOT / prompt_rel).read_text(encoding="utf-8")
         cfg_json["system_prompt_path"] = _GUEST_SYSTEM_PROMPT_NAME
-        if "max_output_tokens" not in cfg_json and "max_tokens" in cfg_json:
-            cfg_json["max_output_tokens"] = cfg_json.pop("max_tokens")
         if context_limits is not None:
             cfg_json["max_context_tokens"] = context_limits[agent.slot]
+        if output_limits is not None:
+            cfg_json["max_output_tokens"] = output_limits[agent.slot]
         config_blobs[agent.slot] = json.dumps(cfg_json, indent=2, sort_keys=True)
     return config_blobs, prompt_blobs
 

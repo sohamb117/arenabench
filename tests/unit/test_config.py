@@ -13,6 +13,7 @@ EXPECTED_MODEL = "anthropic/claude-opus-4-7"
 EXPECTED_TEMPERATURE = 0.7
 EXPECTED_MAX_TOKENS = 4096
 EXPECTED_CONTEXT_TOKENS = 128_000
+EXPECTED_BUDGET_OUTPUT_TOKENS = 128_000
 EXPECTED_REQUEST_TIMEOUT_S = 60
 EXPECTED_NUM_RETRIES = 3
 EXPECTED_REASONING_EFFORT = "medium"
@@ -78,10 +79,12 @@ def test_responses_api_mode_round_trips_for_copilot(tmp_path: pathlib.Path) -> N
     payload["model"] = "github_copilot/gpt-5.5"
     payload["api_key_env"] = None
     payload["api_mode"] = "responses"
+    del payload["max_tokens"]
 
     cfg = load_config(_write_config(tmp_path, payload))
 
     assert cfg.api_mode == "responses"
+    assert cfg.max_output_tokens is None
 
 
 # ── field validation rejections ───────────────────────────────────────────────

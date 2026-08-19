@@ -115,7 +115,7 @@ class _LiteLlmCompletion(Protocol):
         num_retries: int,
         fallbacks: list[str] | None,
         drop_params: bool,
-        max_tokens: int,
+        max_tokens: int | None = None,
         reasoning_effort: str | None = None,
         api_key: str | None = None,
     ) -> object: ...
@@ -126,7 +126,7 @@ def call(
     model: str,
     messages: list[dict[str, str]],
     temperature: float,
-    max_tokens: int,
+    max_tokens: int | None,
     timeout_s: float,
     num_retries: int,
     fallbacks: list[str] | None,
@@ -257,7 +257,7 @@ def _responses_call(
     *,
     model: str,
     messages: list[dict[str, str]],
-    max_tokens: int,
+    max_tokens: int | None,
     timeout_s: float,
     reasoning_effort: str | None,
     attempt: int,
@@ -275,6 +275,21 @@ def _responses_call(
         timeout_s=timeout_s,
         reasoning_effort=reasoning_effort or "none",
     )
+    if response.status == "incomplete":
+        reason = response.incomplete_reason or "unknown"
+        raise LlmCallError(
+            f"provider response incomplete: reason={reason} "
+            f"reasoning_tokens={response.reasoning_tokens}",
+            LlmFailureMetadata(
+                category="provider_refusal",
+                attempt=attempt,
+                finish_reason=reason,
+                prompt_tokens=response.input_tokens,
+                completion_tokens=response.output_tokens,
+                total_tokens=response.total_tokens,
+                latency_s=elapsed_s(started),
+            ),
+        )
     if not response.content:
         raise LlmCallError(
             "provider returned no text: finish_reason=unknown",

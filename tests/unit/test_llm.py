@@ -25,6 +25,8 @@ from tests.unit._llm_fixtures import (
 )
 
 FILTERED_PROMPT_TOKENS = 211
+TRUNCATED_OUTPUT_TOKENS = 1024
+TRUNCATED_REASONING_TOKENS = 946
 
 
 def _call(api_key: str | None = None) -> LlmCallResult:
@@ -192,6 +194,9 @@ def test_call_normalizes_responses_result() -> None:
         output_tokens=COMPLETION_TOKENS,
         total_tokens=TOTAL_TOKENS,
         cost_usd=COST_USD,
+        status="completed",
+        incomplete_reason=None,
+        reasoning_tokens=0,
     )
     with patch("harness.llm.call_copilot_responses", return_value=response) as responses:
         result = call(
@@ -218,6 +223,37 @@ def test_call_normalizes_responses_result() -> None:
         timeout_s=TIMEOUT_S,
         reasoning_effort="medium",
     )
+
+
+def test_call_reports_incomplete_responses_metadata() -> None:
+    response = ResponsesResult(
+        content='{"analysis":',
+        input_tokens=PROMPT_TOKENS,
+        output_tokens=TRUNCATED_OUTPUT_TOKENS,
+        total_tokens=PROMPT_TOKENS + TRUNCATED_OUTPUT_TOKENS,
+        cost_usd=None,
+        status="incomplete",
+        incomplete_reason="max_output_tokens",
+        reasoning_tokens=TRUNCATED_REASONING_TOKENS,
+    )
+    with (
+        patch("harness.llm.call_copilot_responses", return_value=response),
+        pytest.raises(LlmCallError, match=f"reasoning_tokens={TRUNCATED_REASONING_TOKENS}") as exc,
+    ):
+        call(
+            model="github_copilot/gpt-5.5",
+            messages=MESSAGES,
+            temperature=TEMPERATURE,
+            max_tokens=TRUNCATED_OUTPUT_TOKENS,
+            timeout_s=TIMEOUT_S,
+            num_retries=0,
+            fallbacks=None,
+            reasoning_effort="medium",
+            api_mode="responses",
+        )
+
+    assert exc.value.finish_reason == "max_output_tokens"
+    assert exc.value.completion_tokens == TRUNCATED_OUTPUT_TOKENS
 
 
 def test_call_raises_llm_call_error_for_bad_request_error() -> None:

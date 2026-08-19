@@ -28,6 +28,8 @@ from orchestrator.match_config import AgentEntry, MatchConfig
 
 ED25519_PUBKEY_PREFIX = "ssh-ed25519 "
 EXPECTED_TEST_ARGS_LEN = 2
+PROVIDER_CONTEXT_TOKENS = 1_050_000
+PROVIDER_OUTPUT_TOKENS = 128_000
 _GUEST_ADDR = "10.0.2.2"
 
 
@@ -80,7 +82,6 @@ def _write_agent(tmp_path: Path, slot: int, *, system_prompt_path: str) -> Path:
             {
                 "model": "test-model",
                 "temperature": 0.7,
-                "max_tokens": 1000,
                 "request_timeout_s": 60,
                 "num_retries": 1,
                 "parser": "json",
@@ -106,6 +107,24 @@ def test_load_agent_blobs_rewrites_system_prompt_path(
     rewritten = cast(dict[str, object], json.loads(config_blobs[0]))
     assert rewritten["system_prompt_path"] == "system_prompt.txt"
     assert prompt_blobs[0] == "prompt-for-slot-0\n"
+
+
+def test_load_agent_blobs_injects_provider_token_capacities(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("orchestrator._cli_helpers._REPO_ROOT", tmp_path)
+    _write_agent(tmp_path, 0, system_prompt_path="configs/prompts/adversarial.txt")
+    agents = [AgentEntry(slot=0, user="agent0", config="configs/agents/a0.json")]
+
+    config_blobs, _ = load_agent_blobs(
+        agents,
+        context_limits={0: PROVIDER_CONTEXT_TOKENS},
+        output_limits={0: PROVIDER_OUTPUT_TOKENS},
+    )
+
+    rewritten = cast(dict[str, object], json.loads(config_blobs[0]))
+    assert rewritten["max_context_tokens"] == PROVIDER_CONTEXT_TOKENS
+    assert rewritten["max_output_tokens"] == PROVIDER_OUTPUT_TOKENS
 
 
 def test_load_agent_blobs_raises_when_config_not_object(

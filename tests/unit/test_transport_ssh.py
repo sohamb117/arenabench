@@ -98,6 +98,21 @@ def test_recv_returns_parsed_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
     process.close_pipes()
 
 
+def test_recv_drains_buffered_envelope_after_ssh_process_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = FakeSshProcess()
+    _ = patch_popen(monkeypatch, process)
+    transport = SshTransport(SshConfig(host="127.0.0.1", port=22222, user="agent0"))
+    transport.open()
+    env = _env()
+    process.write_stdout(f"{serialize_envelope(env)}\n".encode())
+    process.returncode = 1
+
+    assert transport.recv(timeout_s=0.05) == env
+    process.close_pipes()
+
+
 def test_recv_skips_blank_lines_before_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
     process = FakeSshProcess()
     _ = patch_popen(monkeypatch, process)

@@ -26,11 +26,16 @@ def _config(*, capped: bool) -> MatchConfig:
     )
 
 
-def _agent(model: str, fallbacks: list[str] | None = None) -> AgentConfig:
+def _agent(
+    model: str,
+    fallbacks: list[str] | None = None,
+    *,
+    max_output_tokens: int | None = 100,
+) -> AgentConfig:
     return AgentConfig(
         model=model,
         temperature=0.0,
-        max_output_tokens=100,
+        max_output_tokens=max_output_tokens,
         request_timeout_s=10,
         num_retries=1,
         fallbacks=fallbacks,
@@ -76,6 +81,35 @@ def test_capped_preflight_loads_every_primary_once() -> None:
 
     assert runtime is not None
     assert loaded_models == [("provider/primary-a", "provider/primary-b")]
+
+
+def test_capped_preflight_uses_provider_output_ceiling() -> None:
+    agents = {
+        "a0.json": _agent(
+            "provider/primary-a",
+            max_output_tokens=None,
+        ),
+        "a1.json": _agent(
+            "provider/primary-a",
+            max_output_tokens=None,
+        ),
+    }
+
+    runtime = build_budget_runtime(
+        _config(capped=True),
+        load_agent=lambda path: agents[path.name],
+        output_limits={0: 128_000, 1: 128_000},
+        load_profiles=lambda models: {
+            model: PricingProfile(
+                model=model,
+                input_usd_per_token=0.1,
+                output_usd_per_token=0.2,
+            )
+            for model in models
+        },
+    )
+
+    assert runtime is not None
 
 
 def test_capped_preflight_rejects_nonempty_fallbacks() -> None:

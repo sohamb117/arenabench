@@ -4,7 +4,7 @@ import pytest
 
 from common.errors import ConfigError
 from harness.config import AgentConfig
-from orchestrator.agent_runtime import resolve_context_limits
+from orchestrator.agent_runtime import resolve_context_limits, resolve_output_limits
 from orchestrator.match_config import AgentEntry
 
 
@@ -64,6 +64,19 @@ def test_copilot_context_metadata_uses_canonical_model_name() -> None:
 
     assert limits == {0: 1_050_000}
     assert loaded_models == ["gpt-5.5"]
+
+
+def test_output_limit_defaults_to_provider_metadata() -> None:
+    entries = [AgentEntry(slot=0, user="agent0", config="agent.json")]
+
+    limits = resolve_output_limits(
+        entries,
+        load_agent=lambda _path: _agent_config(),
+        load_metadata=lambda _model: {"max_output_tokens": 128_000},
+        repo_root=Path("/repo"),
+    )
+
+    assert limits == {0: 128_000}
 
 
 @pytest.mark.parametrize("metadata", [{}, {"max_input_tokens": None}, {"max_input_tokens": 0}])
