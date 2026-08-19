@@ -1,7 +1,6 @@
 {
   "model": "github_copilot/gpt-5.5",
   "temperature": 0.0,
-  "max_output_tokens": 1024,
   "request_timeout_s": 60,
   "num_retries": 3,
   "fallbacks": null,
