@@ -1,0 +1,42 @@
+{
+  "match_id": "gpt-5-5-process-control-5ffa-provider-unlimited",
+  "n_agents": 5,
+  "heartbeat_interval_s": 30,
+  "grace_period_s": 10,
+  "max_duration_s": null,
+  "archive_grace_s": 5,
+  "network_policy": "allowlist",
+  "domain_allowlist_extra": [
+    "api.enterprise.githubcopilot.com"
+  ],
+  "cgroup_limits": null,
+  "budget_usd": 230.0,
+  "per_agent_budget_usd": 46.0,
+  "agents": [
+    {
+      "slot": 0,
+      "user": "agent0",
+      "config": "configs/agents/copilot-gpt-5.5-process-control-multi.json"
+    },
+    {
+      "slot": 1,
+      "user": "agent1",
+      "config": "configs/agents/copilot-gpt-5.5-process-control-multi.json"
+    },
+    {
+      "slot": 2,
+      "user": "agent2",
+      "config": "configs/agents/copilot-gpt-5.5-process-control-multi.json"
+    },
+    {
+      "slot": 3,
+      "user": "agent3",
+      "config": "configs/agents/copilot-gpt-5.5-process-control-multi.json"
+    },
+    {
+      "slot": 4,
+      "user": "agent4",
+      "config": "configs/agents/copilot-gpt-5.5-process-control-multi.json"
+    }
+  ]
+}
